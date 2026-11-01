@@ -334,6 +334,9 @@ button:disabled { opacity: .38; }
 .chars-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
 .char { position: relative; aspect-ratio: 5 / 6; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); isolation: isolate; }
 .char-art { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: hsl(var(--h) 26% 28%) center / cover no-repeat; }
+.char-add { aspect-ratio: 5 / 6; border-radius: 8px; border: 2px dashed var(--field); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: var(--muted); font-weight: 500; cursor: pointer; }
+.char-add:hover, .char-add:focus-visible { border-color: var(--accent); color: var(--fg); outline: none; }
+.char-add-plus { font-size: 44px; line-height: 1; font-weight: 300; }
 .char-initial { font-size: 64px; font-weight: 500; color: hsl(var(--h) 40% 82% / .85); }
 .char-over { position: absolute; inset: 0; z-index: 1; display: flex; flex-direction: column; justify-content: space-between; padding: 14px; opacity: 0; transition: opacity .15s; background: rgb(0 0 0 / .4); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); }
 .char:hover .char-over, .char:focus-within .char-over, .char:focus .char-over { opacity: 1; }
@@ -2091,7 +2094,7 @@ document.addEventListener("change", ev => {
   } else if (ev.target.id === "ex-existing") loadExisting(ev.target.value);
 });
 let CHAR = null;
-const CHARS = {list: null, pics: {}, big: {}, detail: null, loading: false, error: "", tab: "actions", draft: null, confirmDel: null, confirmTimer: 0, busy: "", classGuild: null};
+const CHARS = {options: null, creating: false, list: null, pics: {}, big: {}, detail: null, loading: false, error: "", tab: "actions", draft: null, confirmDel: null, confirmTimer: 0, busy: "", classGuild: null};
 const BOOK_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 5c-1.11-.35-2.33-.5-3.5-.5-1.95 0-4.05.4-5.5 1.5-1.45-1.1-3.55-1.5-5.5-1.5S2.45 4.9 1 6v14.65c0 .25.25.5.5.5.1 0 .15-.05.25-.05C3.1 20.45 5.05 20 6.5 20c1.95 0 4.05.4 5.5 1.5 1.35-.85 3.8-1.5 5.5-1.5 1.65 0 3.35.3 4.75 1.05.1.05.15.05.25.05.25 0 .5-.25.5-.5V6c-.6-.45-1.25-.75-2-1zm0 13.5c-1.1-.35-2.3-.5-3.5-.5-1.7 0-4.15.65-5.5 1.5V8c1.35-.85 3.8-1.5 5.5-1.5 1.2 0 2.4.15 3.5.5v11.5z"/></svg>`;
 const hueOf = name => { let h = 0; for (const ch of String(name)) h = (h * 31 + ch.charCodeAt(0)) % 360; return h; };
 const charMeta = c => [c.class, c.level ? `Level ${c.level}` : ""].filter(Boolean).join(" · ");
@@ -2116,8 +2119,10 @@ function renderCharacters() {
   $("chars-sub").textContent = list && list.length ? `${list.length} in homebrew` : "";
   if (CHARS.error) { grid.innerHTML = `<div class="notice" style="grid-column:1/-1"><span style="color:var(--bad)">${esc(CHARS.error)}</span><button type="button" class="tiny" id="chars-retry">Try again</button></div>`; return; }
   if (!list) { grid.innerHTML = `<p class="hint">Loading…</p>`; return; }
-  if (!list.length) { grid.innerHTML = `<p class="hint" style="grid-column:1/-1">No homebrew characters yet. In Discord: <code class="inl">$mode homebrew</code>, then <code class="inl">$profile create</code>.</p>`; return; }
-  grid.innerHTML = list.map(charTile).join("");
+  const full = CHARS.options && list.length >= CHARS.options.maxCharacters;
+  const add = CHARS.options && !full ? `<div class="char-add" data-char-create tabindex="0" role="button" aria-label="Create a new character"><span class="char-add-plus" aria-hidden="true">+</span><span>New character</span></div>` : "";
+  grid.innerHTML = list.map(charTile).join("") + add;
+  if (!list.length) grid.insertAdjacentHTML("afterbegin", `<p class="hint" style="grid-column:1/-1;margin:0">No homebrew characters yet. Make your first one.</p>`);
 }
 function paintPicture(pid) {
   const url = CHARS.pics[pid];
@@ -2139,7 +2144,7 @@ async function loadPicture(pid) {
 async function loadCharacters() {
   if (!AUTH.user || CHARS.loading) return;
   CHARS.loading = true; CHARS.error = "";
-  try { CHARS.list = (await api("/api/characters")).characters; }
+  try { const res = await api("/api/characters"); CHARS.list = res.characters; CHARS.options = res.options || null; }
   catch (e) { CHARS.error = e.message; }
   CHARS.loading = false;
   if (MODE === "characters") renderCharacters();
@@ -2152,6 +2157,7 @@ const draftFor = d => ({name: d.name, level: String(d.level), class: d.class || 
 function revokeMedia(map, pid) { const u = map[pid]; if (u && u !== "pending") URL.revokeObjectURL(u); delete map[pid]; }
 function applyDetail(d) {
   CHARS.detail = d;
+  if (Array.isArray(d.classGuilds) && !d.classGuilds.some(g => g.id === CHARS.classGuild)) CHARS.classGuild = "";
   const row = (CHARS.list || []).find(c => c.id === d.id);
   if (row) Object.assign(row, {name: d.name, class: d.class, level: d.level, picture: d.picture, actions: d.actions});
   if (!d.picture && CHARS.pics[d.id]) { revokeMedia(CHARS.pics, d.id); CHARS.pics[d.id] = ""; }
@@ -2170,11 +2176,19 @@ async function loadBig(pid) {
   if (CHARS.detail && CHARS.detail.id === pid && !$("char-modal").hidden && CHARS.tab === "pictures") renderCharModal();
 }
 function classOptions(d, draft) {
+  const group = (label, list) => list.length ? `<optgroup label="${esc(label)}">${list.map(c => opt(c, draft.class, c)).join("")}</optgroup>` : "";
+  if (Array.isArray(d.classGuilds)) {
+    const builtin = Array.isArray(d.classes) ? d.classes : [];
+    const groups = d.classGuilds.filter(g => !CHARS.classGuild || g.id === CHARS.classGuild);
+    const known = new Set([...builtin, ...groups.flatMap(g => g.classes)]);
+    const extra = draft.class && !known.has(draft.class) ? [draft.class] : [];
+    return `<option value="" ${draft.class ? "" : "selected"} disabled>No class</option>` + group("Built-in", builtin)
+      + groups.map(g => group(`Custom (${g.name})`, g.classes)).join("") + group("Current", extra);
+  }
   const lib = EXIST.libs[CHARS.classGuild], custom = Array.isArray(lib?.classes) ? lib.classes.map(c => c.name) : [];
   const builtin = Array.isArray(d.classes) ? d.classes : [];
   const known = new Set([...builtin, ...custom]);
   const extra = draft.class && !known.has(draft.class) ? [draft.class] : [];
-  const group = (label, list) => list.length ? `<optgroup label="${esc(label)}">${list.map(c => opt(c, draft.class, c)).join("")}</optgroup>` : "";
   const gname = (AUTH.guilds.find(g => g.id === CHARS.classGuild) || {}).name || "server";
   return `<option value="" ${draft.class ? "" : "selected"} disabled>No class</option>` + group("Built-in", builtin) + group(`Custom (${gname})`, custom) + group("Current", extra);
 }
@@ -2182,7 +2196,8 @@ function detailsHTML(d) {
   const f = CHARS.draft;
   if (!hasCharacterDetails(d)) return `<p class="hint" style="margin:0">The bot hasn't sent this character's details. Restart the bot to load the updated character editor API, then try again.</p>`;
   const stat = a => `<label class="f"><span>${a} <em data-mod="${a}">${modText(f.stats[a])}</em></span><input type="number" data-cd="stat:${a}" min="1" max="30" value="${esc(f.stats[a])}"></label>`;
-  const serverPick = AUTH.guilds.length > 1 ? `<label class="f"><span>Custom classes from</span><select data-cd="guild">${AUTH.guilds.map(g => opt(g.id, CHARS.classGuild, g.name)).join("")}</select></label>` : "";
+  const classGuilds = Array.isArray(d.classGuilds) ? d.classGuilds : AUTH.guilds;
+  const serverPick = classGuilds.length ? `<label class="f"><span>Custom classes from</span><select data-cd="guild">${Array.isArray(d.classGuilds) ? opt("", CHARS.classGuild, "All servers") : ""}${classGuilds.map(g => opt(g.id, CHARS.classGuild, g.name)).join("")}</select></label>` : "";
   return `<div class="row">
       <label class="f" style="grid-column: span 2"><span>Name <em>max 100</em></span><input type="text" data-cd="name" maxlength="100" value="${esc(f.name)}" autocomplete="off"></label>
       <label class="f"><span>Level <em>1-${d.maxLevel}</em></span><input type="number" data-cd="level" min="1" max="${d.maxLevel}" value="${esc(f.level)}"></label></div>
@@ -2212,9 +2227,49 @@ function actionsHTML(d) {
     return `<div class="lib-item"><span class="char-act"><span>${esc(a.name)}</span><em>${esc(text)}</em></span><span class="char-act-btns">${j ? `<button type="button" class="tiny" data-char-edit="${i}">Edit</button>` : ""}<button type="button" class="tiny danger" data-char-del="${i}">${sure ? "Sure?" : "Delete"}</button></span></div>`;
   }).join("");
 }
+const newCharacterDraft = () => Object.assign({id: "", name: "", class: null, level: 1, description: "", picture: false, image: false, actionList: [], stats: Object.fromEntries(ABIL.map(a => [a, 10]))}, CHARS.options || {});
+function openNewCharacter() {
+  if (!CHARS.options) { toast("The bot hasn't sent the character options. Restart the bot, then reload the page."); return; }
+  CHARS.creating = true; CHARS.tab = "details"; CHARS.confirmDel = null; CHARS.busy = ""; CHARS.classGuild = "";
+  CHARS.detail = newCharacterDraft(); CHARS.draft = draftFor(CHARS.detail);
+  $("char-modal").hidden = false;
+  renderCharModal();
+  const name = document.querySelector('#char-body [data-cd="name"]'); if (name) name.focus();
+}
+async function createCharacter() {
+  const f = CHARS.draft, d = CHARS.detail;
+  if (!f || !CHARS.creating) return;
+  const name = f.name.trim(), level = Number(f.level), stats = {};
+  if (!name) { toast("Give the character a name."); return; }
+  if (!Number.isInteger(level) || level < 1 || level > d.maxLevel) { toast(`The level must be 1 to ${d.maxLevel}.`); return; }
+  for (const a of ABIL) {
+    const v = Number(f.stats[a]);
+    if (!Number.isInteger(v) || v < 1 || v > 30) { toast(`${a} must be a whole number from 1 to 30.`); return; }
+    stats[a] = v;
+  }
+  const body = {name, level, stats, description: f.description.trim()};
+  if (f.class) body.class = f.class;
+  const btn = $("cn-create"); btn.disabled = true; btn.textContent = "Creating…";
+  try {
+    const res = await api("/api/characters", {method: "POST", body: JSON.stringify(body)});
+    CHARS.creating = false; CHARS.draft = null; CHARS.tab = "actions"; CHARS.classGuild = "";
+    CHARS.list = CHARS.list || [];
+    CHARS.list.push({id: res.id, name: res.name, class: res.class, level: res.level, picture: res.picture, actions: res.actions, equipped: res.equipped});
+    applyDetail(res);
+    toast(res.message || "Created.");
+  } catch (e) { toast(e.message); if ($("cn-create")) { $("cn-create").disabled = false; $("cn-create").textContent = "Create character"; } }
+}
 function renderCharModal() {
   const d = CHARS.detail;
   if (!d) return;
+  $("char-tabs").hidden = !!CHARS.creating;
+  if (CHARS.creating) {
+    $("char-title").textContent = "New character"; $("char-sub").textContent = "Homebrew character";
+    $("char-avatar").style.setProperty("--h", hueOf(CHARS.draft.name || "new")); $("char-avatar").style.backgroundImage = "";
+    $("char-body").innerHTML = detailsHTML(d);
+    $("char-foot").innerHTML = `<button type="button" class="ghost" id="cn-cancel">Cancel</button><button type="button" class="primary" id="cn-create">Create character</button>`;
+    return;
+  }
   $("char-title").textContent = d.name;
   $("char-sub").textContent = charMeta(d) || "Homebrew character";
   $("char-avatar").style.setProperty("--h", hueOf(d.name));
@@ -2241,6 +2296,7 @@ function renderCharModal() {
 async function openCharacter(pid) {
   const c = (CHARS.list || []).find(x => x.id === pid);
   if (!c) return;
+  CHARS.creating = false; $("char-tabs").hidden = false;
   CHARS.detail = null; CHARS.tab = "actions"; CHARS.draft = null; CHARS.confirmDel = null; CHARS.busy = "";
   CHARS.classGuild = AUTH.guild;
   $("char-modal").hidden = false;
@@ -2252,8 +2308,10 @@ async function openCharacter(pid) {
   try {
     const d = await api(`/api/characters/${encodeURIComponent(pid)}`, {cache: "no-store"});
     if ($("char-modal").hidden) return;
-    CHARS.detail = d; renderCharModal();
-    loadExistingLib(CHARS.classGuild).then(() => { if (CHARS.tab === "details" && !$("char-modal").hidden) renderCharModal(); });
+    CHARS.detail = d;
+    if (Array.isArray(d.classGuilds)) CHARS.classGuild = "";
+    renderCharModal();
+    if (!Array.isArray(d.classGuilds)) loadExistingLib(CHARS.classGuild).then(() => { if (CHARS.tab === "details" && !$("char-modal").hidden) renderCharModal(); });
   } catch (e) { $("char-body").innerHTML = `<p class="hint" style="color:var(--bad)">${esc(e.message)}</p>`; }
 }
 async function saveCharacterDetails() {
@@ -2271,7 +2329,7 @@ async function saveCharacterDetails() {
   if (f.description.trim() !== d.description) body.description = f.description.trim();
   if (level !== d.level) body.level = level;
   if (Object.keys(stats).length) body.stats = stats;
-  if (f.class && f.class !== d.class) { body.class = f.class; if (!d.classes.includes(f.class)) body.guild = CHARS.classGuild; }
+  if (f.class && f.class !== d.class) { body.class = f.class; if (!Array.isArray(d.classGuilds) && !d.classes.includes(f.class)) body.guild = CHARS.classGuild; }
   if (!Object.keys(body).length) { toast("Nothing changed."); return; }
   const btn = $("cd-save"); btn.disabled = true; btn.textContent = "Saving…";
   try {
@@ -2368,7 +2426,7 @@ document.addEventListener("input", ev => {
     const m = document.querySelector(`[data-mod="${a}"]`); if (m) m.textContent = modText(t.value);
   } else if (k === "guild") {
     CHARS.classGuild = t.value; renderCharModal();
-    loadExistingLib(t.value).then(() => { if (CHARS.tab === "details" && !$("char-modal").hidden) renderCharModal(); });
+    if (!Array.isArray(CHARS.detail?.classGuilds)) loadExistingLib(t.value).then(() => { if (CHARS.tab === "details" && !$("char-modal").hidden) renderCharModal(); });
   } else CHARS.draft[k] = t.value;
 });
 document.addEventListener("keydown", ev => {
@@ -2529,6 +2587,15 @@ document.addEventListener("input", ev => {
     $("counter-area").querySelector('[data-ct-field="style"]').value = "custom";
   }
   if ($("ct-delete")) $("ct-delete").textContent="Delete counter";
+});
+document.addEventListener("click", ev => {
+  if (ev.target.closest("[data-char-create]")) { openNewCharacter(); return; }
+  const b = ev.target.closest("button"); if (!b) return;
+  if (b.id === "cn-create") createCharacter();
+  else if (b.id === "cn-cancel") { CHARS.creating = false; $("char-modal").hidden = true; }
+});
+document.addEventListener("keydown", ev => {
+  if ((ev.key === "Enter" || ev.key === " ") && ev.target.matches && ev.target.matches("[data-char-create]")) { ev.preventDefault(); openNewCharacter(); }
 });
 function startLogin() {
   const state = Math.random().toString(36).slice(2) + Date.now().toString(36);
