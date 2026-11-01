@@ -804,7 +804,12 @@ function dataLists() {
 }
 
 function getPath(obj, path) { return path.split(".").reduce((o, k) => (o == null ? o : o[isNaN(k) ? k : Number(k)]), obj); }
-function setPath(obj, path, val) { const ks = path.split("."); const last = ks.pop(); const o = getPath(obj, ks.join(".")) ?? obj; o[isNaN(last) ? last : Number(last)] = val; }
+function setPath(obj, path, val) {
+  const ks = path.split("."), last = ks.pop();
+  let o = obj;
+  ks.forEach((k, i) => { const key = isNaN(k) ? k : Number(k), nextKey = i + 1 < ks.length ? ks[i + 1] : last; if (o[key] == null) o[key] = isNaN(nextKey) ? {} : []; o = o[key]; });
+  o[isNaN(last) ? last : Number(last)] = val;
+}
 const bText = (path, label, {hint = "", ph = "", cls = "", list = "", root = "cur", max = ""} = {}) =>
   `<label class="f"><span>${label}${hint ? ` <em>${hint}</em>` : ""}</span><input type="text" class="${cls}" data-b="${path}" data-root="${root}" ${list ? `list="${list}"` : ""} ${max ? `maxlength="${max}"` : ""} placeholder="${esc(ph)}" value="${esc(getPath(root === "base" ? S : CUR(), path))}" autocomplete="off"></label>`;
 const bNum = (path, label, {hint = "", min = "", max = "", root = "cur", ph = ""} = {}) =>
@@ -1943,8 +1948,17 @@ function linkedHTML(path, label, passive) {
     <button type="button" class="tiny" data-link="${path}" data-link-label="${esc(label)}" data-link-passive="${passive ? 1 : 0}">${a ? "Edit" : passive ? "+ Add a passive" : "+ Add an action"} in the action creator</button>
     ${a ? `<button type="button" class="tiny ghost" data-unlink="${path}">Remove</button>` : ""}</div>`;
 }
+function fixItemExtras(item) {
+  for (const [many, one] of [["passives", "passive"], ["actions", "action"]]) {
+    if (!Array.isArray(item[many])) item[many] = item[one] ? [item[one]] : [];
+    delete item[one];
+  }
+  for (const k of Object.keys(item)) if (/^\d+$/.test(k)) delete item[k];
+  return item;
+}
 function extrasHTML(key, label, passive) {
-  const list = IT[key] || [];
+  fixItemExtras(IT);
+  const list = IT[key];
   const rows = list.map((_, i) => linkedHTML(`${key}.${i}`, label, passive) + eText(`${key}.${i}.info`, "Description shown on the item", {hint: "optional", max: 300})).join("");
   const add = list.length < 6 ? `<div class="linked">${list.length ? "" : `<span class="tag">${passive ? "passive" : "action"}</span><span class="hint">none</span>`}<button type="button" class="tiny" data-link="${key}.${list.length}" data-link-label="${esc(label)}" data-link-passive="${passive ? 1 : 0}">+ Add ${list.length ? (passive ? "another passive" : "another action") : passive ? "a passive" : "an action"} in the action creator</button></div>` : "";
   return rows + add;
