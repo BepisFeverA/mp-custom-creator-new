@@ -215,7 +215,7 @@ details.cond[open] summary { margin-bottom: 8px; }
 .bot-tag { background: #5865f2; color: #fff; font-size: 10px; font-weight: 600; padding: 1px 5px; border-radius: 3px; }
 .embed { margin-top: 6px; background: var(--embed); border-left: 4px solid var(--embed-strip); border-radius: 4px; padding: 10px 14px 12px 12px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; max-width: 520px; }
 .embed .author { font-size: 13px; font-weight: 600; color: #f2f3f5; display: flex; align-items: center; gap: 6px; }
-.embed .author i { width: 20px; height: 20px; border-radius: 50%; background: #5d6474; display: inline-block; }
+.embed .author i { width: 20px; height: 20px; border-radius: 50%; background: #5d6474 center / cover no-repeat; display: inline-block; flex: none; }
 .embed .title { font-size: 16px; font-weight: 600; color: #fff; margin-top: 4px; overflow-wrap: anywhere; }
 .embed .ftitle { font-size: 13px; font-weight: 600; color: #fff; margin-top: 8px; }
 .embed .ftext { font-size: 14px; color: var(--embed-fg); white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -348,6 +348,7 @@ button:disabled { opacity: .38; }
 .char-modal-head { display: flex; align-items: center; gap: 12px; }
 .char-avatar { flex: none; width: 44px; height: 44px; border-radius: 50%; background: hsl(var(--h, 220) 26% 28%) center / cover no-repeat; }
 .char-act { display: flex; flex-direction: column; min-width: 0; }
+#existing-picker select { min-width: 180px; }
 .char-act em { font-style: normal; font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>
 
@@ -369,6 +370,11 @@ button:disabled { opacity: .38; }
       <div class="picker" style="margin-top:10px">
         <label for="ex" class="eyebrow">Start from an example</label>
         <select id="ex"></select>
+      </div>
+      <div class="picker" id="existing-picker" style="margin-top:10px" hidden>
+        <label for="ex-guild" class="eyebrow">Edit one from</label>
+        <select id="ex-guild" aria-label="Server"></select>
+        <select id="ex-existing" aria-label="Existing one you can edit"></select>
       </div>
       <p class="ex-blurb" id="ex-blurb"></p>
     </div>
@@ -1266,7 +1272,8 @@ function shownAction(a, idx = S.active) {
 }
 function renderPreview(full) {
   const pi = previewIndex();
-  const a = shownAction(full, pi), who = "Goblin", me = "Your Character", outcome = $("pv-outcome").value;
+  const a = shownAction(full, pi), who = "Goblin", me = CHAR && MODE === "action" ? CHAR.name : "Your Character", outcome = $("pv-outcome").value;
+  const mePic = CHAR && MODE === "action" && CHARS.pics[CHAR.id] && CHARS.pics[CHAR.id] !== "pending" ? CHARS.pics[CHAR.id] : "";
   $("preview-label").textContent = pi >= 0 ? `Preview of -var ${S.variants[pi].key}` : "Preview in Discord";
   const shows = l => {
     const w = l.when || "always";
@@ -1278,7 +1285,7 @@ function renderPreview(full) {
   const look = Object.assign({}, (a.looks || []).find(shows) || {});
   for (const s of withAutoWhen(a.steps).filter(s => s.type === "look" && shows(s))) for (const k of LOOK_OUT) if (s[k]) look[k] = s[k];
   const A = Object.assign({}, a, look);
-  const fill = (t, mode) => decorate(esc(t).replace(/\{name\}/g, me).replace(/\{target\}|\{targets\}/g, who).replace(/\{action\}/g, esc(a.name || "Action")), mode || "link");
+  const fill = (t, mode) => decorate(esc(t).replace(/\{name\}/g, () => esc(me)).replace(/\{target\}|\{targets\}/g, who).replace(/\{action\}/g, esc(a.name || "Action")), mode || "link");
   const title = A.title ? fill(A.title, "title") : esc(a.steps.some(s => s.type === "attack") ? `${me} attacks with ${/^[aeiou]/i.test(a.name || "") ? "an" : "a"} ${a.name || "…"}!` : `${me} uses ${a.name || "…"}!`);
   const lines = withAutoWhen(a.steps).filter(s => s.type !== "look").map(s => {
     if (s.type === "attack") return `<div><b>To Hit</b>: 1d20 + ${s.ability}${s.proficient === false ? "" : " + PROF"}${s.bonus ? (s.bonus > 0 ? " + " : " − ") + Math.abs(s.bonus) : ""}${outcome === "crit" ? " — <b>CRIT!</b>" : ""}</div>`;
@@ -1292,7 +1299,7 @@ function renderPreview(full) {
   const thumb = thumbSrc && thumbSrc !== "none" && /^(https?|blob):/.test(thumbSrc) ? `<img class="thumb pv-img" data-kind="thumb" src="${esc(thumbSrc)}" alt="Thumbnail preview">` : `<div class="thumb" aria-hidden="true"></div>`;
   const result = {hit: `${who}: Hit! Dealt … damage!`, crit: `${who}: CRIT! Dealt … damage!`, miss: `${who}: Miss!`, fail: `${who}: Failed the save! Took … damage!`, save: `${who}: Saved! Took … damage.`}[outcome];
   $("embed").style.setProperty("--embed-strip", color);
-  $("embed").innerHTML = `<div style="min-width:0"><div class="author"><i></i>${me}</div><div class="title">${title}</div>
+  $("embed").innerHTML = `<div style="min-width:0"><div class="author"><i${mePic ? ` style="background-image:url('${esc(mePic)}')"` : ""}></i>${esc(me)}</div><div class="title">${title}</div>
     ${lines.length ? `<div class="ftitle">Meta</div><div class="meta">${decorate(lines.join(""), "link")}</div>` : ""}
     ${A.description ? `<div class="ftitle">Effect</div><div class="ftext">${fill(A.description)}</div>` : ""}${(a.fields || []).map(f => `<div class="ftitle">${fill(f.name, "title")}</div><div class="ftext">${fill(f.value)}</div>`).join("")}
     <div class="sub">${result}</div></div>${thumbSrc === "none" ? "" : thumb}
@@ -1580,7 +1587,7 @@ function loadExample(i, quiet) {
 
 document.addEventListener("input", ev => {
   const t = ev.target;
-  if (t.id === "ex") { if (t.value !== "") loadExample(Number(t.value)); return; }
+  if (t.id === "ex") { if (t.value !== "") loadExample(Number(t.value)); if (MODE !== "action") fillExisting(); return; }
   if (t.dataset.e) {
     const val = t.type === "checkbox" ? t.checked : (t.dataset.int ? (t.value === "" ? "" : Number(t.value)) : t.value);
     setPath(entity(), t.dataset.e, t.dataset.e === "hit_die" ? Number(val) : val);
@@ -1683,7 +1690,7 @@ document.addEventListener("click", ev => {
   if (b.id === "add-field" && S.fields.length < 3) { S.fields.push({name: "", value: ""}); rerender(); return; }
   if (b.id === "copy-cmd") { copy(lastCmd, lastCmd.length > 2000 ? "Copied, but it's over 2,000 characters. Use a .json file instead." : "Import command copied. Paste it in Discord."); return; }
   if (b.id === "copy-json") { copy(lastJson, "JSON copied."); return; }
-  if (b.id === "btn-new" && MODE !== "action") { undoEntity = JSON.stringify({CL, IT}); if (MODE === "class") CL = BLANK_CLASS(); else IT = BLANK_ITEM(); $("ex").value = ""; $("ex-blurb").textContent = ""; renderEntity(); update(); toast("Cleared.", true); return; }
+  if (b.id === "btn-new" && MODE !== "action") { undoEntity = JSON.stringify({CL, IT}); if (MODE === "class") CL = BLANK_CLASS(); else IT = BLANK_ITEM(); $("ex").value = ""; $("ex-blurb").textContent = ""; renderEntity(); update(); fillExisting(); toast("Cleared.", true); return; }
   if (b.id === "btn-new") { $("ex").value = ""; $("ex-blurb").textContent = ""; loadState(BLANK(), "Cleared. Start with a name and some steps."); return; }
   if (b.id === "btn-load") { $("m-error").textContent = ""; $("modal").hidden = false; $("m-text").focus(); return; }
   if (b.id === "m-cancel") { $("modal").hidden = true; return; }
@@ -1940,7 +1947,7 @@ function setMode(m) {
   $("chars").hidden = !gallery;
   document.querySelector(".grid").hidden = gallery;
   document.querySelectorAll("header .picker, header .head-tools, #ex-blurb").forEach(e => e.classList.toggle("mode-off", gallery));
-  renderCharBanner(); syncSaveLabel();
+  renderCharBanner(); syncSaveLabel(); renderExisting();
   if (gallery) { renderCharacters(); loadCharacters(); return; }
   document.querySelectorAll(".forge > section.card").forEach(s => s.classList.toggle("mode-off", s.classList.contains("entity-card") ? s.dataset.only !== m : m !== "action"));
   $("pv-var").closest(".picker").classList.toggle("mode-off", m !== "action");
@@ -2002,7 +2009,7 @@ async function api(path, opts = {}) {
 function logoutLocal() {
   AUTH.token = null; AUTH.user = null; AUTH.guilds = []; store("forge-token", null);
   Object.values(CHARS.pics).forEach(u => { if (u && u !== "pending") URL.revokeObjectURL(u); });
-  CHARS.list = null; CHARS.pics = {}; CHARS.detail = null; CHARS.error = ""; CHAR = null;
+  CHARS.list = null; CHARS.pics = {}; CHARS.detail = null; CHARS.error = ""; CHAR = null; EXIST.libs = {};
   $("char-modal").hidden = true;
   if (MODE === "characters") setMode("action"); else renderCharBanner();
   renderAccount();
@@ -2014,6 +2021,50 @@ function applySession(data) {
   renderAccount();
   loadCharacters();
 }
+const EXIST = {libs: {}};
+const existingKind = () => MODE === "class" ? "classes" : MODE === "item" ? "items" : null;
+function editableList(kind) {
+  const lib = EXIST.libs[AUTH.guild];
+  return lib ? lib[kind].map((x, i) => ({x, i})).filter(o => o.x.can_edit !== false) : lib;
+}
+function fillExisting() {
+  const kind = existingKind(), sel = $("ex-existing");
+  if (!kind) return;
+  const word = kind === "classes" ? "a class" : "an item", list = editableList(kind);
+  sel.innerHTML = list === undefined ? `<option value="">Loading…</option>`
+    : list === false ? `<option value="">Couldn't load. Pick the server again.</option>`
+    : `<option value="">${list.length ? `Choose ${word} you can edit…` : "Nothing here that you can edit"}</option>` + list.map(o => `<option value="${o.i}">${esc(o.x.name)}</option>`).join("");
+  sel.disabled = !(list && list.length);
+}
+function renderExisting() {
+  const box = $("existing-picker"), kind = existingKind();
+  box.hidden = !(kind && AUTH.user && AUTH.guilds.length);
+  if (box.hidden) return;
+  $("ex-guild").innerHTML = AUTH.guilds.map(g => opt(g.id, AUTH.guild, g.name)).join("");
+  fillExisting();
+  loadExistingLib(AUTH.guild);
+}
+async function loadExistingLib(gid, force) {
+  if (!gid || (!force && EXIST.libs[gid] !== undefined)) return;
+  try { EXIST.libs[gid] = await api("/api/library?guild=" + encodeURIComponent(gid)); }
+  catch (e) { EXIST.libs[gid] = false; toast(e.message); }
+  if (gid === AUTH.guild && existingKind()) fillExisting();
+}
+function loadExisting(i) {
+  const kind = existingKind(), list = editableList(kind), found = list && list.find(o => String(o.i) === String(i));
+  if (!found) return;
+  undoEntity = JSON.stringify({CL, IT});
+  if (kind === "classes") CL = entityFrom(found.x.json); else IT = entityFrom(found.x.json);
+  renderEntity(); update();
+  toast(`Loaded ${found.x.name}. Save to the bot updates it.`, true);
+}
+document.addEventListener("change", ev => {
+  if (ev.target.id === "ex-guild") {
+    AUTH.guild = ev.target.value; store("forge-guild", AUTH.guild);
+    EXIST.libs[AUTH.guild] === false && delete EXIST.libs[AUTH.guild];
+    fillExisting(); loadExistingLib(AUTH.guild);
+  } else if (ev.target.id === "ex-existing") loadExisting(ev.target.value);
+});
 let CHAR = null;
 const CHARS = {list: null, pics: {}, detail: null, loading: false, error: ""};
 const BOOK_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 5c-1.11-.35-2.33-.5-3.5-.5-1.95 0-4.05.4-5.5 1.5-1.45-1.1-3.55-1.5-5.5-1.5S2.45 4.9 1 6v14.65c0 .25.25.5.5.5.1 0 .15-.05.25-.05C3.1 20.45 5.05 20 6.5 20c1.95 0 4.05.4 5.5 1.5 1.35-.85 3.8-1.5 5.5-1.5 1.65 0 3.35.3 4.75 1.05.1.05.15.05.25.05.25 0 .5-.25.5-.5V6c-.6-.45-1.25-.75-2-1zm0 13.5c-1.1-.35-2.3-.5-3.5-.5-1.7 0-4.15.65-5.5 1.5V8c1.35-.85 3.8-1.5 5.5-1.5 1.2 0 2.4.15 3.5.5v11.5z"/></svg>`;
@@ -2049,6 +2100,7 @@ function paintPicture(pid) {
   const art = document.querySelector(`.char[data-char="${CSS.escape(pid)}"] .char-art`);
   if (art) { art.style.backgroundImage = `url('${url}')`; art.querySelector(".char-initial")?.remove(); }
   if (CHARS.detail && CHARS.detail.id === pid && !$("char-modal").hidden) $("char-avatar").style.backgroundImage = `url('${url}')`;
+  if (CHAR && CHAR.id === pid && MODE === "action") update();
 }
 async function loadPicture(pid) {
   CHARS.pics[pid] = "pending";
@@ -2105,6 +2157,7 @@ function workOnCharacter(action) {
   CHAR = {id: d.id, name: d.name};
   $("char-modal").hidden = true;
   setMode("action");
+  if (!(d.id in CHARS.pics) && d.picture) loadPicture(d.id);
   $("ex").value = ""; $("ex-blurb").textContent = "";
   if (action) { const {st} = fromData(JSON.parse(JSON.stringify(action.json))); loadState(st, `Loaded ${action.name} from ${d.name}.`); }
   else loadState(BLANK(), `New action for ${d.name}. Start with a name and some steps.`);
@@ -2134,6 +2187,7 @@ function renderAccount() {
   const box = $("account");
   $("save-bot").hidden = !(loginReady() && AUTH.user);
   $("tab-chars").hidden = !AUTH.user;
+  renderExisting();
   if (!AUTH.user) { MENU_OPEN = false; box.innerHTML = `<button type="button" class="discord" id="login-btn">Log in with Discord</button>`; return; }
   const initial = esc((AUTH.user.name || "?")[0].toUpperCase());
   const pic = AUTH.user.avatar ? `<img class="pfp" src="${esc(AUTH.user.avatar)}" alt="">` : `<span class="pfp">${initial}</span>`;
@@ -2181,6 +2235,7 @@ async function saveToBot() {
     const res = await api("/api/save", {method: "POST", body: JSON.stringify({kind, guild: AUTH.guild, character, data})});
     toast(res.message || "Saved.");
     if (character) { CHARS.detail = null; loadCharacters(); }
+    if (kind !== "action") { delete EXIST.libs[AUTH.guild]; loadExistingLib(AUTH.guild); }
   } catch (e) { toast(e.message); }
   finally { btn.textContent = label; update(); }
 }
@@ -2215,7 +2270,7 @@ document.addEventListener("click", ev => {
   else if (b.id === "lib-close") $("lib-modal").hidden = true;
   else if (b.dataset.libKind) loadFromLibrary(b.dataset.libKind, Number(b.dataset.libI));
 });
-document.addEventListener("input", ev => { if (ev.target.id === "guild-pick") { AUTH.guild = ev.target.value; store("forge-guild", AUTH.guild); } });
+document.addEventListener("input", ev => { if (ev.target.id === "guild-pick") { AUTH.guild = ev.target.value; store("forge-guild", AUTH.guild); renderExisting(); } });
 
 function setupCollapsers() {
   let saved = {};
