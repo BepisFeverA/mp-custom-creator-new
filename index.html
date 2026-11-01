@@ -2423,7 +2423,7 @@ function renderCounterArea() {
     <div class="row">${counterField("min","Minimum",{max:60,mono:true})}${counterField("max","Maximum",{max:60,mono:true})}${counterField("value","Current value",{type:"number",ph:"Use reset value"})}</div>
     <div class="row">${select("reset","Reset on",resetOptions)}${counterField("reset_to","Reset to",{max:60,mono:true,ph:"max, min or a formula"})}</div>
     <div class="row">${select("style","Display style",data.styles.map(s=>[s,styleNames[s] || s]))}${counterField("fill","Filled symbol",{ph:"◉"})}${counterField("empty","Empty symbol",{ph:"○"})}</div>
-    <p class="hint" style="margin:0">A blank current value uses the reset value for a new counter, or keeps the current value when editing. Custom symbols override the selected style. Counters above 10 use the bot's bar.</p>
+    <p class="hint" style="margin:0">Minimum is the lowest allowed value, not the starting value. For five usable dots, set minimum to 0 and maximum to 5. A blank current value uses the reset value for a new counter, or keeps the current value when editing. Entering symbols selects Custom symbols; choosing another style clears them. Counters above 10 use the bot's bar.</p>
     <p class="hint" id="ct-error" role="alert" style="color:var(--bad);margin:0"></p>
     <div class="head-tools"><button type="button" class="primary" id="ct-save" ${state.busy ? "disabled" : ""}>${state.busy ? "Saving…" : state.key ? "Save changes" : "Add to character"}</button><button type="button" class="ghost" id="ct-check" ${state.busy ? "disabled" : ""}>Check & preview</button>${state.key ? `<button type="button" class="danger" id="ct-delete" ${state.busy ? "disabled" : ""}>${state.confirm ? "Confirm delete" : "Delete counter"}</button>` : ""}</div></section></div>
     <aside class="bench"><section class="card"><h2>Preview</h2><div class="embed"><div class="embed-body"><b id="ct-preview-name"></b><div id="ct-preview-value" style="white-space:pre-wrap;overflow-wrap:anywhere"></div></div></div><p class="hint" id="ct-preview-note" style="margin:0">Check the counter to calculate its limits and appearance for this character.</p></section>
@@ -2439,7 +2439,8 @@ function paintCounterPreview() {
   if (!$("ct-preview-name")) return;
   $("ct-preview-name").textContent = p?.name || COUNTER_EDITOR.draft?.name || "Your counter";
   $("ct-preview-value").textContent = p ? p.preview.replace(/\*\*/g, "") : "";
-  $("ct-preview-note").textContent = p ? `${p.value} / ${p.max} · minimum ${p.min} · resets to ${p.reset_value}. ${p.desc || ""}` : "Check the counter to calculate its limits and appearance for this character.";
+  const notice = p ? (p.min === p.max ? " The limits are equal, so this counter has a fixed value and no usable dots." : "") + (p.max > 10 ? " Maximum is above 10, so the bot uses a bar." : "") : "";
+  $("ct-preview-note").textContent = p ? `${p.value} / ${p.max} · minimum ${p.min} · resets to ${p.reset_value}.${notice} ${p.desc || ""}` : "Check the counter to calculate its limits and appearance for this character.";
 }
 async function loadCharacterCounters() {
   const state = COUNTER_EDITOR, pid = state.pid, seq = ++state.request;
@@ -2518,6 +2519,15 @@ document.addEventListener("input", ev => {
   const key=ev.target.dataset?.ctField;
   if (!key || !COUNTER_EDITOR.draft) return;
   COUNTER_EDITOR.draft[key]=ev.target.value; COUNTER_EDITOR.preview=null; COUNTER_EDITOR.confirm=false; counterError(""); paintCounterPreview();
+  if (key === "style" && ev.target.value !== "custom") {
+    for (const symbol of ["fill", "empty"]) {
+      COUNTER_EDITOR.draft[symbol] = "";
+      $("counter-area").querySelector(`[data-ct-field="${symbol}"]`).value = "";
+    }
+  } else if (["fill", "empty"].includes(key) && ev.target.value.trim()) {
+    COUNTER_EDITOR.draft.style = "custom";
+    $("counter-area").querySelector('[data-ct-field="style"]').value = "custom";
+  }
   if ($("ct-delete")) $("ct-delete").textContent="Delete counter";
 });
 function startLogin() {
