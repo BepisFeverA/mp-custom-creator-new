@@ -589,7 +589,10 @@ const COUNTED = ["Bleed", "Burn", "Rupture", "Sinking", "Tremor", "Poise", "Whit
 const BEASTS = {wolf: "Wolf", black_bear: "Black Bear", giant_spider: "Giant Spider", brown_bear: "Brown Bear", giant_eagle: "Giant Eagle", elephant: "Elephant", tyrannosaurus: "Tyrannosaurus", acid_slime: "Acid Slime"};
 const RESERVED = ["add", "define", "del", "delete", "desc", "describe", "export", "import", "list", "remove", "rm"];
 const MAX_STEPS = 12, MAX_VARIANTS = 8, MAX_LOOKS = 6, MAX_TRIGGERS = 4, MAX_USES = 3;
-const GROUPS = ["attack", "save"];
+const GROUPS = ["attack", "save", "if", "else"];
+const ROLLS = ["attack", "save"];
+const isCtl = type => type === "if" || type === "else";
+const canHold = (container, node) => !isCtl(container.type) || !GROUPS.includes(node.type);
 const WHEN_LABEL = {always: "Always", hit: "On a hit", crit: "On a crit", normal: "On a non-crit hit", miss: "On a miss", fail: "If the save fails", save: "If the save succeeds"};
 const TRIGGER_LABEL = {hit: "When you're hit", missed: "When an attack misses you", attacked: "When you're attacked", damaged: "When you take damage", hp_below: "When your HP drops below…",
   turn_start: "At the start of your turn", turn_end: "At the end of your turn", combat_start: "When combat begins", attack_hit: "When you hit with an attack", action_used: "After you use an action",
@@ -684,9 +687,11 @@ const STEP_TYPES = {
     {k: "thumbnail", label: "Thumbnail link", type: "text", def: "", hint: "https://… or none", mono: true},
     {k: "color", label: "Color", type: "text", def: "", hint: "#FF6A00", mono: true},
     {k: "footer", label: "Footer", type: "text", def: "", hint: "max 100"}]},
+  if: {label: "If", blurb: "Runs steps on a condition", fields: []},
+  else: {label: "Otherwise", blurb: "Runs when the If above is false", fields: []},
 };
 const OMIT_DEFAULT = new Set(["bonus", "crit_range", "proficient", "always_hit", "always_crit", "dc", "damage_type", "alt_type", "save", "crit", "to", "from", "kind"]);
-const ADD_ORDER = ["attack", "save", "damage", "effect", "heal", "remove", "text", "look", "counter", "grant", "summon", "burst"];
+const ADD_ORDER = ["attack", "save", "if", "damage", "effect", "heal", "remove", "text", "look", "counter", "grant", "summon", "burst"];
 const LEAVES = ADD_ORDER.filter(t => !GROUPS.includes(t));
 const COND_KEYS = ["when", "chance", "per_round", "target_has", "target_missing", "self_has", "self_missing", "target_stacks", "target_stat", "consumed", "counter_is"];
 const EFFECT_FIELDS = ["name", "kind", "duration", "description", "ac", "speed", "attack", "damage", "save", "taken", "dealt", "tick", "potency", "count", "bleed_bonus_chance", "burn", "pierce", "crit_less", "hit_pct", "status", "taken_ranged", "regen", "attack_adv", "defense_adv", "skip_turn"];
@@ -739,29 +744,38 @@ function locate(id, list = stepsRoot(), parent = null) {
 }
 const within = (outer, node) => (outer.children || []).some(k => k === node || within(k, node));
 const subtreeSize = n => 1 + (n.children || []).reduce((sum, k) => sum + subtreeSize(k), 0);
-const total = () => flat().length;
+const total = () => flat().filter(f => !isCtl(f.node.type)).length;
 const HIT_WHENS = ["hit", "crit", "normal", "miss"];
 function hasBefore(i, type) { return flat().slice(0, i).some(f => f.node.type === type); }
-function treeAuto(i) { const f = flat()[i]; return f && f.parent && f.parent.type === "attack" ? "hit" : "always"; }
+function botIdx(F, i) { return F.slice(0, i).filter(f => !isCtl(f.node.type)).length; }
+function groupAncestor(F, i) {
+  let p = F[i].parent;
+  while (p) {
+    if (ROLLS.includes(p.type)) return F.findIndex(x => x.node === p);
+    const at = F.find(x => x.node === p); p = at ? at.parent : null;
+  }
+  return -1;
+}
+function treeAuto(i) { const F = flat(), anc = F[i] ? groupAncestor(F, i) : -1; return anc >= 0 && F[anc].node.type === "attack" ? "hit" : "always"; }
 function botAuto(i) { const F = flat(), s = F[i].node, before = F.slice(0, i).map(x => x.node.type); return (!["attack", "save", "text"].includes(s.type) && before.includes("attack") && !before.includes("save")) ? "hit" : "always"; }
 
 function ofFor(i) {
   const F = flat(), f = F[i];
-  if (!f || !f.parent) return null;
+  if (!f || !f.parent || isCtl(f.parent.type)) return null;
   const p = F.findIndex(x => x.node === f.parent);
-  if (GROUPS.includes(f.node.type)) return p;
-  for (let j = i - 1; j > p; j--) if (GROUPS.includes(F[j].node.type)) return p;
+  if (ROLLS.includes(f.node.type)) return botIdx(F, p);
+  for (let j = i - 1; j > p; j--) if (ROLLS.includes(F[j].node.type)) return botIdx(F, p);
   return null;
 }
 function groupFlat(nodes) {
   const out = [], open = [], byRaw = new Map(nodes.map(n => [n._raw, n]));
   for (const n of nodes) {
-    const isGroup = GROUPS.includes(n.type), w = n.cond.when, g = open[open.length - 1];
-    if (isGroup) n.children = []; else delete n.children;
+    const ctl = isCtl(n.type), isGroup = ROLLS.includes(n.type), w = n.cond.when, g = open[open.length - 1];
+    if (!ctl) { if (isGroup) n.children = []; else delete n.children; }
     let parent = null;
     const tied = n._of != null ? byRaw.get(n._of) : null;
-    if (tied && GROUPS.includes(tied.type) && tied !== n) parent = tied;
-    else if (g) {
+    if (tied && ROLLS.includes(tied.type) && tied !== n) parent = tied;
+    else if (g && !ctl) {
       const inside = g.type === "attack" ? (isGroup ? HIT_WHENS.includes(w) : (w === "auto" || HIT_WHENS.includes(w))) : (isGroup ? ["fail", "save"].includes(w) : w !== "always");
       if (inside) parent = g;
     }
@@ -900,23 +914,24 @@ function ccHTML(s) {
     <label class="f"><span>At least <em>stacks</em></span><input type="number" id="s${s.id}-cc-min" data-s="${s.id}" data-cc="min" data-int="1" min="1" max="99" value="${cc.min ?? ""}"></label>` : ""}</div>`;
 }
 function condHTML(s, i) {
-  const c = s.cond;
+  if (s.type === "else") return "";
+  const isIf = s.type === "if", c = s.cond;
   const opts = ["auto", "always", "hit", "crit", "normal", "miss", "fail", "save"].filter(w => w === "auto" || w === "always" || (["hit", "crit", "normal", "miss"].includes(w) ? hasBefore(i, "attack") : hasBefore(i, "save")));
   const txt = (k, label, cls = "") => `<label class="f"><span>${label}</span><input type="text" class="${cls}" id="s${s.id}-w-${k}" data-s="${s.id}" data-w="${k}" ${cls ? "" : 'list="dl-names"'} value="${esc(c[k])}" autocomplete="off"></label>`;
   const set = Object.entries(c).filter(([k, v]) => !["when", "stacks_min"].includes(k) && v !== "" && v != null && v !== false).length + (c.when !== "auto" ? 1 : 0);
   const spent = flat().slice(0, i).some(f => f.node.type === "attack" && f.node.cc && f.node.cc.on);
-  return `<details class="cond" ${set ? "open" : ""}><summary>When it happens${set ? ` · ${set} set` : ""}</summary><div class="row">
-    <label class="f"><span>When</span><select id="s${s.id}-w-when" data-s="${s.id}" data-w="when">${opts.map(w => opt(w, c.when, w === "auto" ? `Default (${WHEN_LABEL[treeAuto(i)]})` : WHEN_LABEL[w])).join("")}</select></label>
-    <label class="f"><span>Chance % <em>empty = always</em></span><input type="number" id="s${s.id}-w-chance" data-s="${s.id}" data-w="chance" min="1" max="100" value="${esc(c.chance)}"></label>
-    <label class="f"><span>Max per round</span><input type="number" id="s${s.id}-w-per_round" data-s="${s.id}" data-w="per_round" min="1" max="20" value="${esc(c.per_round)}"></label>
+  return `<details class="cond" ${set || isIf ? "open" : ""}><summary>${isIf ? "Condition" : "When it happens"}${set ? ` · ${set} set` : ""}</summary><div class="row">
+    <label class="f"><span>When</span><select id="s${s.id}-w-when" data-s="${s.id}" data-w="when">${opts.filter(w => !(isIf && w === "auto")).map(w => opt(w, isIf && c.when === "auto" ? "always" : c.when, w === "auto" ? `Default (${WHEN_LABEL[treeAuto(i)]})` : isIf && w === "always" ? "Not needed" : WHEN_LABEL[w])).join("")}</select></label>
+    ${isIf ? "" : `<label class="f"><span>Chance % <em>empty = always</em></span><input type="number" id="s${s.id}-w-chance" data-s="${s.id}" data-w="chance" min="1" max="100" value="${esc(c.chance)}"></label>
+    <label class="f"><span>Max per round</span><input type="number" id="s${s.id}-w-per_round" data-s="${s.id}" data-w="per_round" min="1" max="20" value="${esc(c.per_round)}"></label>`}
     ${txt("counter_is", "Only if a counter is", "dice")}</div>
     <div class="row">${txt("target_has", "Only if target has")}${txt("target_missing", "Only if target lacks")}${txt("self_has", "Only if you have")}${txt("self_missing", "Only if you lack")}</div>
     <div class="row">${txt("target_stat", "Only if the target's <em>AC&gt;=15, STR&lt;0, HP&lt;50%</em>", "dice")}</div>
     <div class="row">${txt("stacks_effect", "Only if target has at least…")}
       <label class="f"><span>…this many stacks</span><input type="number" id="s${s.id}-w-stacks_min" data-s="${s.id}" data-w="stacks_min" min="1" max="99" value="${esc(c.stacks_min)}"></label>
-      ${spent || c.consumed ? `<label class="chk"><input type="checkbox" id="s${s.id}-w-consumed" data-s="${s.id}" data-w="consumed" ${c.consumed ? "checked" : ""}> Only if the status was spent for a crit</label>` : ""}</div></details>`;
+      ${!isIf && (spent || c.consumed) ? `<label class="chk"><input type="checkbox" id="s${s.id}-w-consumed" data-s="${s.id}" data-w="consumed" ${c.consumed ? "checked" : ""}> Only if the status was spent for a crit</label>` : ""}</div></details>`;
 }
-const BADGE = {attack: "ATK", save: "SAVE", damage: "DMG", heal: "HEAL", effect: "FX", remove: "DEL", text: "TXT", counter: "CTR", grant: "ACT", summon: "SUM", burst: "BST", look: "LOOK"};
+const BADGE = {if: "IF", else: "ELSE", attack: "ATK", save: "SAVE", damage: "DMG", heal: "HEAL", effect: "FX", remove: "DEL", text: "TXT", counter: "CTR", grant: "ACT", summon: "SUM", burst: "BST", look: "LOOK"};
 const LONG = {
   attack: "Rolls to hit. Steps inside it only happen on a hit.",
   save: "The target rolls a save. Steps inside it follow the result.",
@@ -930,11 +945,14 @@ const LONG = {
   summon: "Calls a beast to fight for you.",
   burst: "Sets off a status on the target now.",
   look: "Changes the title, text, image or color when this step happens.",
+  if: "Runs the steps inside only if its condition is true.",
+  else: "Runs the steps inside when the If above is false.",
 };
 let SEL = null;
 const FOLDED = new Set();
 function addSelect(where, label) {
-  const types = ADD_ORDER;
+  const owner = where === "root" ? null : locate(where);
+  const types = owner && isCtl(owner.node.type) ? LEAVES : ADD_ORDER;
   return `<label class="addrow"><span class="plus" aria-hidden="true">+</span><select data-addto="${where}" aria-label="${esc(label)}" ${total() >= MAX_STEPS ? "disabled" : ""}><option value="">${esc(label)}</option>${types.map(t => `<option value="${t}">${STEP_TYPES[t].label}</option>`).join("")}</select></label>`;
 }
 function treeNode(s, list, idx, parent, numMap) {
@@ -942,7 +960,7 @@ function treeNode(s, list, idx, parent, numMap) {
   let kids = "";
   if (group) {
     kids = `<div class="kids" data-kids="${s.id}" ${open ? "" : "hidden"}>${s.children.map((k, j) => treeNode(k, s.children, j, s, numMap)).join("")}
-      ${s.children.length ? "" : `<div class="kids-hint">Drag steps here. They happen ${s.type === "attack" ? "on a hit" : "with this save"}.</div>`}
+      ${s.children.length ? "" : `<div class="kids-hint">Drag steps here. They happen ${s.type === "attack" ? "on a hit" : s.type === "save" ? "with this save" : s.type === "if" ? "when the condition is true" : "when the If above is false"}.</div>`}
       ${addSelect(String(s.id), "Add a step inside")}</div>`;
   }
   return `<div class="step tnode" data-type="${s.type}" data-id="${s.id}">
@@ -955,7 +973,8 @@ function detailHTML(numMap) {
   const at = SEL != null ? locate(SEL) : null;
   if (!at) return `<div class="detail-empty">Pick a step on the left to edit it, or add one.</div>`;
   const s = at.node, T = STEP_TYPES[s.type], i = numMap.get(s.id), group = GROUPS.includes(s.type), list = at.list, idx = at.index;
-  const canIn = idx > 0 && GROUPS.includes(list[idx - 1].type);
+  const canIn = idx > 0 && GROUPS.includes(list[idx - 1].type) && canHold(list[idx - 1], s);
+  const elseBtn = s.type === "if" ? (list[idx + 1] && list[idx + 1].type === "else" ? `<p class="hint" style="margin:0">The Otherwise branch is right below.</p>` : `<div><button type="button" class="tiny" data-add-else="${s.id}">Add an Otherwise branch</button></div>`) : "";
   const body = (s.type === "effect" ? effectHTML(s) : `<div class="row">${T.fields.map(f => fieldHTML(s, f, i)).join("")}</div>`) + (s.type === "damage" ? scaleHTML(s) : s.type === "attack" ? ccHTML(s) : "");
   const extra = Object.keys(s.extra || {}).length ? `<p class="hint" style="margin:0">Also keeps: <code class="inl">${esc(Object.keys(s.extra).join(", "))}</code> (from the loaded JSON)</p>` : "";
   return `<div class="d-head"><div style="min-width:0"><div class="d-title"><span class="badge b-${s.type}">${BADGE[s.type]}</span> ${T.label} <span class="n">step ${String(i + 1).padStart(2, "0")}</span></div>
@@ -967,7 +986,7 @@ function detailHTML(numMap) {
       <button type="button" class="tiny ghost" data-dup="${s.id}">Copy</button>
       <button type="button" class="tiny danger" data-del="${s.id}" aria-label="Remove step">Remove</button></div></div>
     <p class="d-blurb">${LONG[s.type]}</p>
-    ${body}${extra}${condHTML(s, i)}`;
+    ${body}${elseBtn}${extra}${condHTML(s, i)}`;
 }
 function renderSteps() {
   const v = CUR();
@@ -1086,12 +1105,13 @@ function stepOut(s, i) {
     else if (s.type === "damage" && sc && sc.mode === "flat") o.stack_bonus = {effect: str(sc.effect), per: num(sc.per)};
     if (s.type === "attack" && s.cc && s.cc.on) o.crit_consume = {effect: str(s.cc.effect), min: num(s.cc.min)};
   }
-  const c = s.cond, of = ofFor(i);
-  const parentType = of != null ? flat()[of].node.type : null;
-  const botDefault = of != null ? (parentType === "attack" && s.type !== "text" ? "hit" : "always") : botAuto(i);
+  const c = s.cond, F = flat(), of = ofFor(i), anc = groupAncestor(F, i);
+  const parentType = of != null ? F[i].parent.type : null;
+  const inherited = of == null && anc >= 0 && F[i].parent && isCtl(F[i].parent.type);
+  const botDefault = of != null ? (parentType === "attack" && s.type !== "text" ? "hit" : "always") : inherited ? (F[anc].node.type === "attack" && s.type !== "text" ? "hit" : "always") : botAuto(i);
   if (of != null) o.of = of + 1;
   if (c.when !== "auto") o.when = c.when; else if (treeAuto(i) !== botDefault) o.when = treeAuto(i);
-  if (o.when == null && of == null && !GROUPS.includes(s.type) && !flat()[i].parent && flat().slice(0, i).some(f => GROUPS.includes(f.node.type))) o.when = "always";
+  if (o.when == null && of == null && !ROLLS.includes(s.type) && !F[i].parent && F.slice(0, i).some(f => ROLLS.includes(f.node.type))) o.when = "always";
   if (num(c.chance) != null) o.chance = num(c.chance);
   if (num(c.per_round) != null) o.per_round = num(c.per_round);
   for (const k of ["target_has", "target_missing", "self_has", "self_missing", "counter_is"]) if (str(c[k])) o[k] = str(c[k]);
@@ -1100,7 +1120,54 @@ function stepOut(s, i) {
   if (c.consumed) o.consumed = true;
   return o;
 }
-function stepsOut(root) { ROOT = root; try { return flat(root).map((f, i) => stepOut(f.node, i)); } finally { ROOT = null; } }
+function ifCondOut(n) {
+  const c = n.cond, o = {};
+  if (c.when !== "auto" && c.when !== "always") o.when = c.when;
+  for (const k of ["target_has", "target_missing", "self_has", "self_missing", "counter_is"]) if (str(c[k])) o[k] = str(c[k]);
+  if (str(c.stacks_effect) && num(c.stacks_min) != null) o.target_stacks = {effect: str(c.stacks_effect), min: num(c.stacks_min)};
+  if (str(c.target_stat)) o.target_stat = str(c.target_stat).replace(/\s+/g, "");
+  return o;
+}
+function ifOut(n, els, i, emit) {
+  const o = Object.assign({type: "if"}, ifCondOut(n)), F = flat(), anc = groupAncestor(F, i);
+  if (anc >= 0) o.of = botIdx(F, anc) + 1;
+  o.steps = emit(n.children || []);
+  if (els) o.else = emit(els.children || []);
+  return o;
+}
+function stepsOut(root) {
+  ROOT = root;
+  try {
+    const F = flat(root), at = new Map(F.map((f, i) => [f.node, i]));
+    const emit = list => {
+      const out = [];
+      list.forEach((n, k) => {
+        if (n.type === "else") return;
+        if (n.type === "if") { out.push(ifOut(n, list[k + 1] && list[k + 1].type === "else" ? list[k + 1] : null, at.get(n), emit)); return; }
+        out.push(stepOut(n, at.get(n)));
+        if (n.children && !isCtl(n.type)) out.push(...emit(n.children));
+      });
+      return out;
+    };
+    return emit(root);
+  } finally { ROOT = null; }
+}
+const ifBits = o => { const text = whenText(Object.assign({when: "always"}, o)); return text ? text.replace(/^ \(|\)$/g, "") : "a condition"; };
+function flattenIf(list, chain = []) {
+  const out = [];
+  for (const s of list || []) {
+    if (s && s.type === "if") out.push(...flattenIf(s.steps, chain.concat("if " + ifBits(s).replace(/^if /, ""))), ...flattenIf(s.else, chain.concat("otherwise")));
+    else out.push(chain.length ? Object.assign({}, s, {_ifc: chain}) : s);
+  }
+  return out;
+}
+function ifProblems(list, where, errs) {
+  for (const s of list || []) {
+    if (!s || s.type !== "if") continue;
+    if (!["when", "target_has", "target_missing", "self_has", "self_missing", "counter_is", "target_stacks", "target_stat"].some(k => s[k])) errs.push(`${where}An If needs a condition.`);
+    ifProblems(s.steps, where, errs); ifProblems(s.else, where, errs);
+  }
+}
 function selfOut(r) { const o = {}; for (const k of ["counter_is", "self_has", "self_missing"]) if (str(r && r[k])) o[k] = str(r[k]); return Object.keys(o).length ? o : null; }
 function looksOut(list) {
   return list.map(l => {
@@ -1177,6 +1244,8 @@ function buildAction() {
 const okDice = d => typeof d === "string" && DICE_RE.test(d.replace(/\s+/g, ""));
 const okUrl = u => /^https?:\/\/[^\s]+\.[^\s]+$/i.test(u);
 function checkSteps(steps, where, errs, warns) {
+  ifProblems(steps, where, errs);
+  steps = flattenIf(steps);
   if (steps.length > MAX_STEPS) errs.push(`${where}at most ${MAX_STEPS} steps.`);
   steps.forEach((s, i) => {
     const n = `${where}Step ${i + 1}`;
@@ -1261,7 +1330,8 @@ function check(a) {
   if (discordSpots.length) warns.push(`Discord attachment links (${discordSpots.join(", ")}) stop working after about a day. Use a lasting link like Tenor, Giphy or imgur.`);
   const allTexts = [a, ...Object.values(a.variants || {})].flatMap(x => [x.title, x.description, x.footer, ...(x.fields || []).flatMap(f => [f.name, f.value]), ...[...(x.looks || []), ...(x.steps || []).filter(s => s.type === "look")].flatMap(l => [l.title, l.description, l.footer])]);
   for (const n of [...new Set(unknownTags(allTexts))]) warns.push(`{status:${n}}: "${n}" isn't a status this page knows. If the bot doesn't know it either, the import will be refused. $status lists them.`);
-  if (a.steps.some(s => s.type === "damage") && !a.steps.some(s => s.type === "attack" || s.type === "save") && a.targets !== "self" && !a.passive) warns.push("Damage with no attack roll or save always lands. Add an attack roll if it should be able to miss.");
+  const flatSteps = flattenIf(a.steps);
+  if (flatSteps.some(s => s.type === "damage") && !flatSteps.some(s => s.type === "attack" || s.type === "save") && a.targets !== "self" && !a.passive) warns.push("Damage with no attack roll or save always lands. Add an attack roll if it should be able to miss.");
   return {errs, warns};
 }
 
@@ -1286,7 +1356,7 @@ function sayStep(s, who) {
   return s.type;
 }
 function whenText(s) {
-  const w = s.when || "always", bits = [];
+  const w = s.when || "always", bits = [...(s._ifc || [])];
   if (w !== "always") bits.push(WHEN_LABEL[w].toLowerCase());
   if (s.chance != null) bits.push(`${s.chance}% chance`);
   for (const [k, t] of [["target_has", "if the target has "], ["target_missing", "if the target lacks "], ["self_has", "if you have "], ["self_missing", "if you lack "], ["counter_is", "if "]]) if (s[k]) bits.push(t + s[k]);
@@ -1330,14 +1400,14 @@ function renderPreview(full) {
     return !(l.target_has || l.target_missing || l.self_has || l.self_missing || l.counter_is || l.target_stacks || l.target_stat || l.chance);
   };
   const look = Object.assign({}, (a.looks || []).find(shows) || {});
-  for (const s of withAutoWhen(a.steps).filter(s => s.type === "look" && shows(s))) for (const k of LOOK_OUT) if (s[k]) look[k] = s[k];
+  for (const s of withAutoWhen(flattenIf(a.steps)).filter(s => s.type === "look" && shows(s))) for (const k of LOOK_OUT) if (s[k]) look[k] = s[k];
   const A = Object.assign({}, a, look);
   const fill = (t, mode) => {
     const text = esc(t).replace(/\{name\}/g, () => esc(me)).replace(/\{target\}|\{targets\}/g, who).replace(/\{action\}/g, esc(a.name || "Action"));
     return decorate(mode === "md" ? md(text) : text, mode === "md" ? "link" : mode || "link");
   };
-  const title = A.title ? fill(A.title, "title") : esc(a.steps.some(s => s.type === "attack") ? `${me} attacks with ${/^[aeiou]/i.test(a.name || "") ? "an" : "a"} ${a.name || "…"}!` : `${me} uses ${a.name || "…"}!`);
-  const lines = withAutoWhen(a.steps).filter(s => s.type !== "look").map(s => {
+  const title = A.title ? fill(A.title, "title") : esc(flattenIf(a.steps).some(s => s.type === "attack") ? `${me} attacks with ${/^[aeiou]/i.test(a.name || "") ? "an" : "a"} ${a.name || "…"}!` : `${me} uses ${a.name || "…"}!`);
+  const lines = withAutoWhen(flattenIf(a.steps)).filter(s => s.type !== "look").map(s => {
     if (s.type === "attack") return `<div><b>To Hit</b>: 1d20 + ${s.ability}${s.proficient === false ? "" : " + PROF"}${s.bonus ? (s.bonus > 0 ? " + " : " − ") + Math.abs(s.bonus) : ""}${outcome === "crit" ? " — <b>CRIT!</b>" : ""}</div>`;
     if (s.type === "save") return `<div><b>${s.ability === "BEST" ? "Best" : s.ability} Save</b>: DC ${esc(s.dc ?? "auto")}</div>`;
     if (s.type === "damage") return `<div><b>Damage${outcome === "crit" && s.crit !== false ? " (CRIT!)" : ""}</b>: ${esc(PRETTY(s.dice))}${s.damage_type ? ` [${esc(s.damage_type)}${s.alt_type ? ", " + esc(s.alt_type) : ""}]` : ""}${esc(whenText(s))}</div>`;
@@ -1383,13 +1453,20 @@ function updateAction() {
   const sel = isVar() ? ` -var ${str(CUR().key)}` : "";
   $("use-hint").textContent = a.passive ? "It runs by itself; there's nothing to type." : `$action ${a.name || "name"}${sel}` + (["self", "all_enemies", "all_allies", "everyone"].includes(a.targets) ? "" : " -t goblin");
   $("wrap-max").hidden = S.targets !== "choose";
-  const shown = shownAction(a), F = flat();
-  withAutoWhen(shown.steps || []).forEach((s, i) => {
-    if (!F[i]) return;
+  const shown = shownAction(a), F = flat(), leaves = F.filter(f => !isCtl(f.node.type));
+  withAutoWhen(flattenIf(shown.steps || [])).forEach((s, i) => {
+    if (!leaves[i]) return;
     const html = decorate(esc(sayStep(s, "the target") + whenText(s)), "icons");
-    const el = $("say-" + F[i].node.id); if (el) el.innerHTML = html;
-    if (String(F[i].node.id) === String(SEL) && $("say-detail")) $("say-detail").innerHTML = html;
+    const el = $("say-" + leaves[i].node.id); if (el) el.innerHTML = html;
+    if (String(leaves[i].node.id) === String(SEL) && $("say-detail")) $("say-detail").innerHTML = html;
   });
+  F.filter(f => isCtl(f.node.type)).forEach(f => {
+    const text = f.node.type === "if" ? "if " + ifBits(ifCondOut(f.node)).replace(/^if /, "") : "when the If above is false";
+    const el = $("say-" + f.node.id); if (el) el.textContent = text;
+    if (String(f.node.id) === String(SEL) && $("say-detail")) $("say-detail").textContent = text;
+  });
+  const orphanElse = (function walk(list) { for (let k = 0; k < list.length; k++) { const x = list[k]; if (x.type === "else" && !(list[k - 1] && list[k - 1].type === "if")) return true; if (x.children && walk(x.children)) return true; } return false; })(stepsRoot());
+  if (orphanElse) { errs.push("An Otherwise must come right after an If."); $("issues").insertAdjacentHTML("afterbegin", `<li>An Otherwise must come right after an If.</li>`); $("copy-cmd").disabled = $("copy-json").disabled = $("save-bot").disabled = true; $("status").innerHTML = `<span class="status bad">${errs.length} to fix</span>`; }
   renderPreview(a);
   try { localStorage.setItem("forge-draft-v4", JSON.stringify(S)); } catch (e) {}
 }
@@ -1404,12 +1481,26 @@ function condFrom(raw, s) {
   if (raw.consumed) s.cond.consumed = true;
 }
 function stepsFrom(list, skipped) {
-  const nodes = [];
-  let ri = -1;
-  for (const raw of Array.isArray(list) ? list : []) {
-    ri++;
-    if (!STEP_TYPES[raw.type]) { skipped.push(raw.type); continue; }
-    const s = newStep(raw.type), used = new Set(["type", ...COND_KEYS]);
+  let ctr = -1;
+  const walk = items => {
+    const nodes = [];
+    for (const raw of Array.isArray(items) ? items : []) {
+      if (raw && raw.type === "if") {
+        const block = newStep("if"); condFrom(raw, block);
+        block._raw = -1; if (Number.isInteger(raw.of)) block._of = raw.of - 1;
+        block.children = walk(raw.steps).map(k => { delete k._raw; delete k._of; return k; });
+        nodes.push(block);
+        if (Array.isArray(raw.else) && raw.else.length) {
+          const els = newStep("else"); els._raw = -1; els._of = block._of;
+          els.children = walk(raw.else).map(k => { delete k._raw; delete k._of; return k; });
+          nodes.push(els);
+        }
+        continue;
+      }
+      ctr++;
+      const ri = ctr;
+      if (!raw || !STEP_TYPES[raw.type]) { skipped.push(raw && raw.type); continue; }
+      const s = newStep(raw.type), used = new Set(["type", ...COND_KEYS]);
     if (raw.type === "effect") {
       ["effect", "to", "duration"].forEach(k => used.add(k));
       s.to = raw.to === "self" ? "self" : "target";
@@ -1438,8 +1529,10 @@ function stepsFrom(list, skipped) {
     s._raw = ri;
     if (Number.isInteger(raw.of)) s._of = raw.of - 1;
     nodes.push(s);
-  }
-  return groupFlat(nodes);
+    }
+    return nodes;
+  };
+  return groupFlat(walk(list));
 }
 const condStr = c => c == null ? "" : typeof c === "string" ? c : `${c.counter}${c.op}${c.value}`;
 const selfFrom = r => ({counter_is: condStr(r && r.counter_is), self_has: (r && r.self_has) || "", self_missing: (r && r.self_missing) || ""});
@@ -1513,7 +1606,7 @@ function dropTarget(ev) {
   const card = ev.target.closest(".step"), kidsBox = ev.target.closest(".kids");
   if (kidsBox && (!card || card.closest(".kids") !== kidsBox)) {
     const owner = locate(kidsBox.dataset.kids);
-    if (!owner || owner.node === dragged.node || within(dragged.node, owner.node)) return null;
+    if (!owner || owner.node === dragged.node || within(dragged.node, owner.node) || !canHold(owner.node, dragged.node)) return null;
     return {list: owner.node.children, index: owner.node.children.length, el: kidsBox, cls: "drop-in"};
   }
   if (!card) {
@@ -1526,9 +1619,10 @@ function dropTarget(ev) {
   const r = card.getBoundingClientRect(), head = card.querySelector(".step-head").getBoundingClientRect();
   if (GROUPS.includes(over.node.type)) {
     if (ev.clientY < head.top + head.height / 2) return {list: over.list, index: over.index, el: card, cls: "drop-before"};
-    if (!FOLDED.has(over.node.id)) return {list: over.node.children, index: 0, el: card.querySelector(".kids"), cls: "drop-in"};
+    if (!FOLDED.has(over.node.id) && canHold(over.node, dragged.node)) return {list: over.node.children, index: 0, el: card.querySelector(".kids"), cls: "drop-in"};
     return {list: over.list, index: over.index + 1, el: card, cls: "drop-after"};
   }
+  if (over.parent && !canHold(over.parent, dragged.node)) return null;
   const after = ev.clientY > r.top + r.height / 2;
   return {list: over.list, index: over.index + (after ? 1 : 0), el: card, cls: after ? "drop-after" : "drop-before"};
 }
@@ -1734,7 +1828,8 @@ document.addEventListener("click", ev => {
   if (b.dataset.del) { removeNode(b.dataset.del); rerender(); return; }
   if (b.dataset.dup) { const at = locate(b.dataset.dup); if (at && total() + subtreeSize(at.node) <= MAX_STEPS) { const copyNode = cloneTree([at.node])[0]; at.list.splice(at.index + 1, 0, copyNode); SEL = copyNode.id; rerender(); } return; }
   if (b.dataset.move) { const at = locate(b.dataset.id), j = at.index + Number(b.dataset.move); if (j >= 0 && j < at.list.length) { [at.list[at.index], at.list[j]] = [at.list[j], at.list[at.index]]; rerender(); } return; }
-  if (b.dataset.indent) { const at = locate(b.dataset.indent), g = at && at.list[at.index - 1]; if (g && GROUPS.includes(g.type)) { moveNode(at.node.id, g.children, g.children.length); rerender(); } return; }
+  if (b.dataset.indent) { const at = locate(b.dataset.indent), g = at && at.list[at.index - 1]; if (g && GROUPS.includes(g.type) && canHold(g, at.node)) { moveNode(at.node.id, g.children, g.children.length); rerender(); } return; }
+  if (b.dataset.addElse) { const at = locate(b.dataset.addElse); if (at) { const els = newStep("else"); at.list.splice(at.index + 1, 0, els); SEL = els.id; rerender(); } return; }
   if (b.dataset.outdent) { const at = locate(b.dataset.outdent); if (at && at.parent) { const p = locate(at.parent.id); moveNode(at.node.id, p.list, p.index + 1); rerender(); } return; }
   if (b.dataset.fdel != null) { S.fields.splice(+b.dataset.fdel, 1); rerender(); return; }
   if (b.id === "add-field" && S.fields.length < 3) { S.fields.push({name: "", value: ""}); rerender(); return; }
@@ -1818,7 +1913,7 @@ const ITEM_BONUS = [["ac", "AC"], ["speed", "Speed ft"], ["hp", "Max HP"], ["att
 const RARITIES = ["common", "uncommon", "rare", "very rare", "legendary", "mythical"];
 const ACC_KINDS = ["ring", "amulet", "charm", "cloak", "boots", "bracers", "circlet", "belt", "gloves", "hat", "helm", "brooch", "necklace", "goggles", "accessory"];
 const BLANK_CLASS = () => ({name: "", description: "", hit_die: 8, cast_stat: "", progression: "full", features: [], counters: [], actions: []});
-const BLANK_ITEM = () => ({name: "", description: "", rarity: "common", slot: "weapon", sub_kind: "shield", damage: "1d8", damage_type: "slashing", plus: 0, finesse: false, light: false, two_handed: false, ranged: false,
+const BLANK_ITEM = () => ({name: "", description: "", image: "", thumbnail: "", rarity: "common", slot: "weapon", sub_kind: "shield", damage: "1d8", damage_type: "slashing", plus: 0, finesse: false, light: false, two_handed: false, ranged: false,
   ac: "", dex: "full", kind: "ring", bonus: {}, requires: {}, passive: null, action: null});
 const CLASS_EXAMPLES = [{label: "Blood Knight", blurb: "A half-casting warrior with a passive heal, a counter and a level 2 action.", json: {type: "class", name: "Blood Knight", description: "A warrior who feeds on wounds.", hit_die: 10, casting: {stat: "CHA", progression: "half"},
   features: [{name: "Crimson Hide", level: 1, text: "+1 AC and +10 HP.", bonus: {ac: 1, hp: 10}}, {name: "Thirst", level: 3, text: "Heals 1d6 when it hits, once per round.", passive: {name: "Thirst", passive: true, triggers: [{when: "attack_hit", max_per_round: 1}], steps: [{type: "heal", dice: "1d6", to: "self"}]}}, {name: "Red Fury", level: 6, text: "+2 damage.", bonus: {damage: 2}}],
@@ -1874,7 +1969,8 @@ function renderClassForm() {
 function renderItemForm() {
   const it = IT, weaponish = it.slot === "weapon" || (it.slot === "subweapon" && it.sub_kind === "weapon");
   let h = `<div class="row">${eText("name", "Name", {max: 30})}${eSel("slot", "Slot", [["weapon", "Weapon"], ["subweapon", "Sub-weapon (off hand)"], ["armor", "Armor"], ["accessory", "Accessory"]])}
-    ${eSel("rarity", "Rarity", RARITIES.map(r => [r, r[0].toUpperCase() + r.slice(1)]))}</div>${eArea("description", "Description", {max: 300})}`;
+    ${eSel("rarity", "Rarity", RARITIES.map(r => [r, r[0].toUpperCase() + r.slice(1)]))}</div>${eArea("description", "Description", {max: 300})}
+    <div class="row">${eText("image", "Image link", {cls: "mono", ph: "https://…png or gif"})}${eText("thumbnail", "Thumbnail link", {cls: "mono", ph: "https://…png"})}</div>`;
   if (it.slot === "subweapon") h += `<div class="row">${eSel("sub_kind", "Kind", [["shield", "Shield"], ["weapon", "Off-hand weapon"]])}${it.sub_kind === "shield" ? eNum("ac", "Shield AC", {min: 0, max: 10}) : ""}</div>`;
   if (weaponish) h += `<div class="row">${eText("damage", "Damage dice", {cls: "dice", ph: "1d8"})}${eText("damage_type", "Damage type", {list: "dl-dtypes"})}${eNum("plus", "Plus", {hint: "to hit and damage", min: -3, max: 10})}</div>
     <div class="row">${eChk("finesse", "Finesse (STR or DEX)")}${it.slot === "weapon" ? eChk("light", "Light (fits the off hand)") + eChk("two_handed", "Two-handed") : ""}${eChk("ranged", "Ranged (no ammo needed)")}</div>`;
@@ -1901,6 +1997,8 @@ function buildClass() {
 function buildItem() {
   const it = IT, o = {type: "item", name: str(it.name), rarity: it.rarity, slot: it.slot};
   if (str(it.description)) o.description = str(it.description);
+  if (str(it.image)) o.image = str(it.image);
+  if (str(it.thumbnail)) o.thumbnail = str(it.thumbnail);
   const weaponish = it.slot === "weapon" || (it.slot === "subweapon" && it.sub_kind === "weapon");
   if (weaponish) {
     o.damage = str(it.damage).replace(/\s+/g, ""); o.damage_type = str(it.damage_type).toLowerCase() || "slashing";
@@ -1930,6 +2028,8 @@ function checkEntity(o) {
     if (o.damage != null && !PLAIN_DICE_RE.test(o.damage)) errs.push(`"${o.damage || "(empty)"}" isn't valid damage dice. Try 1d8.`);
     if (o.slot === "armor" && (o.ac < 10 || o.ac > 25)) errs.push("Armor AC must be 10 to 25.");
     if (o.plus != null && (o.plus < -3 || o.plus > 10)) errs.push("The plus must be -3 to 10.");
+    for (const k of ["image", "thumbnail"]) if (o[k] && !okUrl(o[k])) errs.push(`The ${k} must be a link starting with https://.`);
+    if ([o.image, o.thumbnail].some(u => u && /^https?:\/\/(?:cdn\.discordapp\.com|media\.discordapp\.net)\/(?:attachments|ephemeral-attachments)\//i.test(u))) warns.push("Discord attachment links stop working after about a day. Use a lasting link like Tenor, Giphy or imgur.");
   }
   return {errs, warns};
 }
@@ -1951,9 +2051,22 @@ function entityPreview(o) {
     if (o.action) lines.push(`<div>Action: <b>${esc(o.action.name || "action")}</b></div>`);
   }
   $("embed").style.setProperty("--embed-strip", MODE === "class" ? "#7b4bb3" : "#c2410c");
+  const linkOk = u => /^https?:\/\//i.test(u || "");
+  const thumbUrl = MODE === "item" && linkOk(o.thumbnail) ? o.thumbnail : "", imageUrl = MODE === "item" && linkOk(o.image) ? o.image : "";
   $("embed").innerHTML = `<div style="min-width:0"><div class="author"><i></i>Your Character</div><div class="title">${esc(o.name || (MODE === "class" ? "Unnamed class" : "Unnamed item"))}</div>
     <div class="meta" style="margin-top:6px">${decorate(lines.join(""), "link")}</div>${o.description ? `<div class="ftitle">Description</div><div class="ftext">${md(esc(o.description)).replace(STATUS_TAG_RE, (_, n) => { const name = statusName(n); return `${icon(name)}<span class="st-link">${esc(name)}</span>`; })}</div>` : ""}</div>
+    ${thumbUrl ? `<img class="thumb pv-img" data-kind="thumb" src="${esc(thumbUrl)}" alt="Thumbnail preview">` : ""}
+    ${imageUrl ? `<img class="big pv-img" data-kind="image" src="${esc(imageUrl)}" alt="Item image preview">` : ""}
     <div class="foot">Midnight\\Protocol • Custom ${MODE === "class" ? "Class" : "Item"}</div>`;
+  $("embed").querySelectorAll("img.pv-img").forEach(img => {
+    const fallback = () => {
+      const box = document.createElement("div");
+      box.className = img.dataset.kind === "thumb" ? "thumb img-missing" : "big img-missing";
+      box.textContent = img.dataset.kind === "thumb" ? "thumb set" : "Image link set. This page can't load outside images, but Discord will show it.";
+      img.replaceWith(box);
+    };
+    if (img.complete && img.naturalWidth === 0) fallback(); else img.addEventListener("error", fallback, {once: true});
+  });
 }
 function updateEntity() {
   const o = MODE === "class" ? buildClass() : buildItem(), {errs, warns} = checkEntity(o);
@@ -1979,7 +2092,7 @@ function entityFrom(d) {
     return c;
   }
   const it = BLANK_ITEM();
-  Object.assign(it, {name: d.name || "", description: d.description || "", rarity: d.rarity || "common", slot: d.slot || "weapon", bonus: Object.assign({}, d.bonus || {}), requires: Object.assign({}, d.requires || {}),
+  Object.assign(it, {name: d.name || "", description: d.description || "", image: d.image || "", thumbnail: d.thumbnail || "", rarity: d.rarity || "common", slot: d.slot || "weapon", bonus: Object.assign({}, d.bonus || {}), requires: Object.assign({}, d.requires || {}),
     passive: d.passive || null, action: d.action || null, kind: d.kind || "ring", dex: d.dex || "full"});
   if (d.damage) Object.assign(it, {damage: d.damage, damage_type: d.damage_type || "slashing", plus: d.plus || 0, finesse: !!d.finesse, light: !!d.light, two_handed: !!d.two_handed, ranged: !!d.ranged, sub_kind: "weapon"});
   else if (d.slot === "subweapon") it.sub_kind = "shield";
