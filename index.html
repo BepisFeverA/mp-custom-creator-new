@@ -2473,8 +2473,8 @@ function renderCounterArea() {
   const custom = data.counters.filter(c => c.editable), inherited = data.counters.filter(c => !c.editable);
   box.innerHTML = `<div class="forge"><section class="card"><h2>Character counters</h2><p class="hint" style="margin:0">Saved directly to this homebrew character. Actions can spend, gain, reset or check these counters.</p>${picker}
     <div class="ent-row-head"><span class="hint">${custom.length} / ${data.limit} custom counters</span><button type="button" class="tiny" id="ct-new" ${state.busy ? "disabled" : ""}>New counter</button></div>
-    <div class="ent-list">${custom.length ? custom.map(c => `<div class="lib-item"><span class="char-act"><b>${esc(c.name)}</b><em>${esc(c.value)} / ${esc(c.max)} · ${esc(data.resets[c.reset] || c.reset)}</em></span><button type="button" class="tiny" data-ct-edit="${esc(c.key)}" ${state.busy ? "disabled" : ""}>${c.key === state.key ? "Editing" : "Edit"}</button></div>`).join("") : '<p class="hint">No custom counters yet.</p>'}</div>
-    ${inherited.length ? `<details class="cond"><summary>Class and equipment counters · ${inherited.length}</summary>${inherited.map(c => `<div class="lib-item"><span>${esc(c.name)}</span><span class="hint">${esc(c.value)} / ${esc(c.max)} · ${esc(c.source)}</span></div>`).join("")}</details>` : ""}</section>
+    <div class="ent-list">${custom.length ? custom.map(c => `<div class="lib-item"><span class="char-act"><b>${decorate(esc(c.name), "icons")}</b><em>${esc(c.value)} / ${esc(c.max)} · ${esc(data.resets[c.reset] || c.reset)}</em></span><button type="button" class="tiny" data-ct-edit="${esc(c.key)}" ${state.busy ? "disabled" : ""}>${c.key === state.key ? "Editing" : "Edit"}</button></div>`).join("") : '<p class="hint">No custom counters yet.</p>'}</div>
+    ${inherited.length ? `<details class="cond"><summary>Class and equipment counters · ${inherited.length}</summary>${inherited.map(c => `<div class="lib-item"><span>${decorate(esc(c.name), "icons")}</span><span class="hint">${esc(c.value)} / ${esc(c.max)} · ${esc(c.source)}</span></div>`).join("")}</details>` : ""}</section>
     <section class="card"><h2>${state.key ? "Edit counter" : "New counter"}</h2>
     ${counterField("name", "Name · max 30", {max:30})}
     <label class="f"><span>Description · max 150</span><textarea data-ct-field="desc" maxlength="150">${esc(f.desc)}</textarea></label>
@@ -2495,8 +2495,8 @@ function renderCounterArea() {
 function paintCounterPreview() {
   const p = COUNTER_EDITOR.preview;
   if (!$("ct-preview-name")) return;
-  $("ct-preview-name").textContent = p?.name || COUNTER_EDITOR.draft?.name || "Your counter";
-  $("ct-preview-value").textContent = p ? p.preview.replace(/\*\*/g, "") : "";
+  $("ct-preview-name").innerHTML = decorate(esc(p?.name || COUNTER_EDITOR.draft?.name || "Your counter"), "title");
+  $("ct-preview-value").innerHTML = p ? decorate(esc(p.preview.replace(/\*\*/g, "")), "link") : "";
   const notice = p ? (p.min === p.max ? " The limits are equal, so this counter has a fixed value and no usable dots." : "") + (p.max > 10 ? " Maximum is above 10, so the bot uses a bar." : "") : "";
   $("ct-preview-note").textContent = p ? `${p.value} / ${p.max} · minimum ${p.min} · resets to ${p.reset_value}.${notice} ${p.desc || ""}` : "Check the counter to calculate its limits and appearance for this character.";
 }
