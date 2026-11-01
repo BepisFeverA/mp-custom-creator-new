@@ -2139,7 +2139,8 @@ async function loadCharacters() {
   for (const c of CHARS.list || []) if (c.picture && !(c.id in CHARS.pics)) loadPicture(c.id);
 }
 const modText = v => { const n = Number(v); return Number.isFinite(n) ? (Math.floor((n - 10) / 2) >= 0 ? "+" : "") + Math.floor((n - 10) / 2) : ""; };
-const draftFor = d => ({name: d.name, level: String(d.level), class: d.class || "", description: d.description || "", stats: Object.fromEntries(ABIL.map(a => [a, String(d.stats[a])]))});
+const hasCharacterDetails = d => d && d.stats && ABIL.every(a => Number.isInteger(d.stats[a])) && Array.isArray(d.classes) && Number.isInteger(d.maxLevel) && typeof d.description === "string";
+const draftFor = d => ({name: d.name, level: String(d.level), class: d.class || "", description: d.description || "", stats: Object.fromEntries(ABIL.map(a => [a, d.stats?.[a] == null ? "" : String(d.stats[a])]))});
 function revokeMedia(map, pid) { const u = map[pid]; if (u && u !== "pending") URL.revokeObjectURL(u); delete map[pid]; }
 function applyDetail(d) {
   CHARS.detail = d;
@@ -2161,15 +2162,17 @@ async function loadBig(pid) {
   if (CHARS.detail && CHARS.detail.id === pid && !$("char-modal").hidden && CHARS.tab === "pictures") renderCharModal();
 }
 function classOptions(d, draft) {
-  const lib = EXIST.libs[CHARS.classGuild], custom = lib ? lib.classes.map(c => c.name) : [];
-  const known = new Set([...d.classes, ...custom]);
+  const lib = EXIST.libs[CHARS.classGuild], custom = Array.isArray(lib?.classes) ? lib.classes.map(c => c.name) : [];
+  const builtin = Array.isArray(d.classes) ? d.classes : [];
+  const known = new Set([...builtin, ...custom]);
   const extra = draft.class && !known.has(draft.class) ? [draft.class] : [];
   const group = (label, list) => list.length ? `<optgroup label="${esc(label)}">${list.map(c => opt(c, draft.class, c)).join("")}</optgroup>` : "";
   const gname = (AUTH.guilds.find(g => g.id === CHARS.classGuild) || {}).name || "server";
-  return `<option value="" ${draft.class ? "" : "selected"} disabled>No class</option>` + group("Built-in", d.classes) + group(`Custom (${gname})`, custom) + group("Current", extra);
+  return `<option value="" ${draft.class ? "" : "selected"} disabled>No class</option>` + group("Built-in", builtin) + group(`Custom (${gname})`, custom) + group("Current", extra);
 }
 function detailsHTML(d) {
   const f = CHARS.draft;
+  if (!hasCharacterDetails(d)) return `<p class="hint" style="margin:0">The bot hasn't sent this character's details. Restart the bot to load the updated character editor API, then try again.</p>`;
   const stat = a => `<label class="f"><span>${a} <em data-mod="${a}">${modText(f.stats[a])}</em></span><input type="number" data-cd="stat:${a}" min="1" max="30" value="${esc(f.stats[a])}"></label>`;
   const serverPick = AUTH.guilds.length > 1 ? `<label class="f"><span>Custom classes from</span><select data-cd="guild">${AUTH.guilds.map(g => opt(g.id, CHARS.classGuild, g.name)).join("")}</select></label>` : "";
   return `<div class="row">
@@ -2215,7 +2218,9 @@ function renderCharModal() {
     if (!CHARS.draft) CHARS.draft = draftFor(d);
     const keep = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.cd : null;
     body.innerHTML = detailsHTML(d);
-    foot.innerHTML = `<button type="button" class="ghost" id="cd-reset">Reset</button><button type="button" class="primary" id="cd-save">Save changes</button>`;
+    foot.innerHTML = hasCharacterDetails(d)
+      ? `<button type="button" class="ghost" id="cd-reset">Reset</button><button type="button" class="primary" id="cd-save">Save changes</button>`
+      : `<button type="button" class="primary" id="cd-retry">Try again</button>`;
     const el = keep && body.querySelector(`[data-cd="${keep}"]`); if (el && keep === "guild") el.focus();
   } else if (CHARS.tab === "pictures") {
     if (d.image && !(d.id in CHARS.big)) loadBig(d.id);
@@ -2237,7 +2242,7 @@ async function openCharacter(pid) {
   document.querySelectorAll("#char-tabs .tab").forEach(t => t.setAttribute("aria-pressed", String(t.dataset.charTab === "actions")));
   $("char-body").innerHTML = `<p class="hint">Loading…</p>`; $("char-foot").innerHTML = "";
   try {
-    const d = await api(`/api/characters/${encodeURIComponent(pid)}`);
+    const d = await api(`/api/characters/${encodeURIComponent(pid)}`, {cache: "no-store"});
     if ($("char-modal").hidden) return;
     CHARS.detail = d; renderCharModal();
     loadExistingLib(CHARS.classGuild).then(() => { if (CHARS.tab === "details" && !$("char-modal").hidden) renderCharModal(); });
@@ -2245,7 +2250,7 @@ async function openCharacter(pid) {
 }
 async function saveCharacterDetails() {
   const d = CHARS.detail, f = CHARS.draft;
-  if (!d || !f) return;
+  if (!d || !f || !hasCharacterDetails(d)) return;
   const body = {}, name = f.name.trim(), level = Number(f.level), stats = {};
   if (!name) { toast("Give the character a name."); return; }
   if (!Number.isInteger(level) || level < 1 || level > d.maxLevel) { toast(`The level must be 1 to ${d.maxLevel}.`); return; }
@@ -2265,6 +2270,19 @@ async function saveCharacterDetails() {
     const res = await api(`/api/characters/${encodeURIComponent(d.id)}`, {method: "PATCH", body: JSON.stringify(body)});
     CHARS.draft = null; applyDetail(res); toast(res.message || "Saved.");
   } catch (e) { toast(e.message); if ($("cd-save")) { $("cd-save").disabled = false; $("cd-save").textContent = "Save changes"; } }
+}
+async function reloadCharacterDetails() {
+  const d = CHARS.detail, btn = $("cd-retry");
+  if (!d || !btn) return;
+  btn.disabled = true; btn.textContent = "Loading…";
+  try {
+    const fresh = await api(`/api/characters/${encodeURIComponent(d.id)}`, {cache: "no-store"});
+    if ($("char-modal").hidden || CHARS.detail?.id !== d.id) return;
+    CHARS.draft = null; applyDetail(fresh);
+  } catch (e) {
+    toast(e.message);
+    if ($("cd-retry") === btn) { btn.disabled = false; btn.textContent = "Try again"; }
+  }
 }
 async function uploadPicture(kind, file) {
   const d = CHARS.detail;
@@ -2324,6 +2342,7 @@ document.addEventListener("click", ev => {
   else if (b.dataset.charEdit != null && CHARS.detail) workOnCharacter(CHARS.detail.actionList[Number(b.dataset.charEdit)]);
   else if (b.dataset.charDel != null) deleteCharacterAction(Number(b.dataset.charDel));
   else if (b.id === "cd-save") saveCharacterDetails();
+  else if (b.id === "cd-retry") reloadCharacterDetails();
   else if (b.id === "cd-reset") { CHARS.draft = null; renderCharModal(); }
   else if (b.dataset.picPick) $("pic-file-" + b.dataset.picPick).click();
   else if (b.dataset.picDel) removePicture(b.dataset.picDel);
