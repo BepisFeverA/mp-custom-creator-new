@@ -349,6 +349,19 @@ button:disabled { opacity: .38; }
 .char-avatar { flex: none; width: 44px; height: 44px; border-radius: 50%; background: hsl(var(--h, 220) 26% 28%) center / cover no-repeat; }
 .char-act { display: flex; flex-direction: column; min-width: 0; }
 #existing-picker select { min-width: 180px; }
+.modal.wide { width: min(720px, 100%); max-height: calc(100vh - 32px); overflow-y: auto; }
+.modal.wide .lib-body { max-height: none; overflow: visible; }
+.char-foot { display: flex; justify-content: flex-end; gap: 8px; }
+.char-foot:empty { display: none; }
+.char-act-btns { display: inline-flex; gap: 4px; flex: none; }
+.stat-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
+@media (max-width: 560px) { .stat-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.pic-row { display: flex; align-items: center; gap: 16px; }
+.pic-box { flex: none; width: 120px; height: 120px; border-radius: 8px; display: flex; align-items: center; justify-content: center; text-align: center; background: hsl(var(--h, 220) 26% 28%) center / cover no-repeat; }
+.pic-box.round { border-radius: 50%; }
+.pic-note { font-size: 12px; color: #fff; background: rgb(0 0 0 / .55); padding: 2px 8px; border-radius: 4px; }
+.pic-info { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; min-width: 0; }
+.pic-btns { display: flex; gap: 4px; margin-top: 4px; }
 .char-act em { font-style: normal; font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 </style>
 
@@ -534,14 +547,19 @@ button:disabled { opacity: .38; }
   </div>
 </div>
 <div class="modal-back" id="char-modal" hidden>
-  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="char-title">
+  <div class="modal wide" role="dialog" aria-modal="true" aria-labelledby="char-title">
     <div class="char-modal-head">
       <span class="char-avatar" id="char-avatar" aria-hidden="true"></span>
       <div style="min-width:0;flex:1"><h2 id="char-title"></h2><div class="hint" id="char-sub"></div></div>
       <button type="button" class="ghost tiny" id="char-close">Close</button>
     </div>
+    <div class="tabs" id="char-tabs">
+      <button type="button" class="tab" data-char-tab="actions" aria-pressed="true">Actions</button>
+      <button type="button" class="tab" data-char-tab="details" aria-pressed="false">Details</button>
+      <button type="button" class="tab" data-char-tab="pictures" aria-pressed="false">Pictures</button>
+    </div>
     <div id="char-body" class="lib-body"></div>
-    <div style="display:flex;justify-content:flex-end"><button type="button" class="primary" id="char-new">New action</button></div>
+    <div class="char-foot" id="char-foot"></div>
   </div>
 </div>
 <div class="toast" id="toast" hidden></div>
@@ -1997,7 +2015,7 @@ const redirectUri = () => location.origin + location.pathname;
 function store(key, val) { try { val == null ? localStorage.removeItem(key) : localStorage.setItem(key, val); } catch (e) {} }
 function read(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
 async function api(path, opts = {}) {
-  const headers = Object.assign({"Content-Type": "application/json", "ngrok-skip-browser-warning": "1"}, AUTH.token ? {Authorization: "Bearer " + AUTH.token} : {});
+  const headers = Object.assign({"Content-Type": opts.contentType || "application/json", "ngrok-skip-browser-warning": "1"}, AUTH.token ? {Authorization: "Bearer " + AUTH.token} : {});
   let r;
   try { r = await fetch(apiBase() + path, Object.assign({}, opts, {headers})); }
   catch (e) { throw new Error("Couldn't reach the bot. It may be offline."); }
@@ -2008,8 +2026,8 @@ async function api(path, opts = {}) {
 }
 function logoutLocal() {
   AUTH.token = null; AUTH.user = null; AUTH.guilds = []; store("forge-token", null);
-  Object.values(CHARS.pics).forEach(u => { if (u && u !== "pending") URL.revokeObjectURL(u); });
-  CHARS.list = null; CHARS.pics = {}; CHARS.detail = null; CHARS.error = ""; CHAR = null; EXIST.libs = {};
+  Object.values({...CHARS.pics, ...CHARS.big}).forEach(u => { if (u && u !== "pending") URL.revokeObjectURL(u); });
+  CHARS.list = null; CHARS.pics = {}; CHARS.big = {}; CHARS.detail = null; CHARS.draft = null; CHARS.error = ""; CHAR = null; EXIST.libs = {};
   $("char-modal").hidden = true;
   if (MODE === "characters") setMode("action"); else renderCharBanner();
   renderAccount();
@@ -2066,7 +2084,7 @@ document.addEventListener("change", ev => {
   } else if (ev.target.id === "ex-existing") loadExisting(ev.target.value);
 });
 let CHAR = null;
-const CHARS = {list: null, pics: {}, detail: null, loading: false, error: ""};
+const CHARS = {list: null, pics: {}, big: {}, detail: null, loading: false, error: "", tab: "actions", draft: null, confirmDel: null, confirmTimer: 0, busy: "", classGuild: null};
 const BOOK_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 5c-1.11-.35-2.33-.5-3.5-.5-1.95 0-4.05.4-5.5 1.5-1.45-1.1-3.55-1.5-5.5-1.5S2.45 4.9 1 6v14.65c0 .25.25.5.5.5.1 0 .15-.05.25-.05C3.1 20.45 5.05 20 6.5 20c1.95 0 4.05.4 5.5 1.5 1.35-.85 3.8-1.5 5.5-1.5 1.65 0 3.35.3 4.75 1.05.1.05.15.05.25.05.25 0 .5-.25.5-.5V6c-.6-.45-1.25-.75-2-1zm0 13.5c-1.1-.35-2.3-.5-3.5-.5-1.7 0-4.15.65-5.5 1.5V8c1.35-.85 3.8-1.5 5.5-1.5 1.2 0 2.4.15 3.5.5v11.5z"/></svg>`;
 const hueOf = name => { let h = 0; for (const ch of String(name)) h = (h * 31 + ch.charCodeAt(0)) % 360; return h; };
 const charMeta = c => [c.class, c.level ? `Level ${c.level}` : ""].filter(Boolean).join(" · ");
@@ -2120,6 +2138,69 @@ async function loadCharacters() {
   if (MODE === "characters") renderCharacters();
   for (const c of CHARS.list || []) if (c.picture && !(c.id in CHARS.pics)) loadPicture(c.id);
 }
+const modText = v => { const n = Number(v); return Number.isFinite(n) ? (Math.floor((n - 10) / 2) >= 0 ? "+" : "") + Math.floor((n - 10) / 2) : ""; };
+const draftFor = d => ({name: d.name, level: String(d.level), class: d.class || "", description: d.description || "", stats: Object.fromEntries(ABIL.map(a => [a, String(d.stats[a])]))});
+function revokeMedia(map, pid) { const u = map[pid]; if (u && u !== "pending") URL.revokeObjectURL(u); delete map[pid]; }
+function applyDetail(d) {
+  CHARS.detail = d;
+  const row = (CHARS.list || []).find(c => c.id === d.id);
+  if (row) Object.assign(row, {name: d.name, class: d.class, level: d.level, picture: d.picture, actions: d.actions});
+  if (!d.picture && CHARS.pics[d.id]) { revokeMedia(CHARS.pics, d.id); CHARS.pics[d.id] = ""; }
+  if (!d.image && CHARS.big[d.id]) revokeMedia(CHARS.big, d.id);
+  if (CHAR && CHAR.id === d.id) { CHAR.name = d.name; renderCharBanner(); syncSaveLabel(); }
+  if (MODE === "characters") renderCharacters();
+  if (!$("char-modal").hidden) renderCharModal();
+}
+async function loadBig(pid) {
+  CHARS.big[pid] = "pending";
+  try {
+    const r = await fetch(apiBase() + `/api/characters/${encodeURIComponent(pid)}/picture?kind=image`, {headers: {Authorization: "Bearer " + AUTH.token, "ngrok-skip-browser-warning": "1"}});
+    if (!r.ok) throw new Error("no image");
+    CHARS.big[pid] = URL.createObjectURL(await r.blob());
+  } catch (e) { CHARS.big[pid] = ""; }
+  if (CHARS.detail && CHARS.detail.id === pid && !$("char-modal").hidden && CHARS.tab === "pictures") renderCharModal();
+}
+function classOptions(d, draft) {
+  const lib = EXIST.libs[CHARS.classGuild], custom = lib ? lib.classes.map(c => c.name) : [];
+  const known = new Set([...d.classes, ...custom]);
+  const extra = draft.class && !known.has(draft.class) ? [draft.class] : [];
+  const group = (label, list) => list.length ? `<optgroup label="${esc(label)}">${list.map(c => opt(c, draft.class, c)).join("")}</optgroup>` : "";
+  const gname = (AUTH.guilds.find(g => g.id === CHARS.classGuild) || {}).name || "server";
+  return `<option value="" ${draft.class ? "" : "selected"} disabled>No class</option>` + group("Built-in", d.classes) + group(`Custom (${gname})`, custom) + group("Current", extra);
+}
+function detailsHTML(d) {
+  const f = CHARS.draft;
+  const stat = a => `<label class="f"><span>${a} <em data-mod="${a}">${modText(f.stats[a])}</em></span><input type="number" data-cd="stat:${a}" min="1" max="30" value="${esc(f.stats[a])}"></label>`;
+  const serverPick = AUTH.guilds.length > 1 ? `<label class="f"><span>Custom classes from</span><select data-cd="guild">${AUTH.guilds.map(g => opt(g.id, CHARS.classGuild, g.name)).join("")}</select></label>` : "";
+  return `<div class="row">
+      <label class="f" style="grid-column: span 2"><span>Name <em>max 100</em></span><input type="text" data-cd="name" maxlength="100" value="${esc(f.name)}" autocomplete="off"></label>
+      <label class="f"><span>Level <em>1-${d.maxLevel}</em></span><input type="number" data-cd="level" min="1" max="${d.maxLevel}" value="${esc(f.level)}"></label></div>
+    <div class="row"><label class="f"><span>Class</span><select data-cd="class">${classOptions(d, f)}</select></label>${serverPick}</div>
+    <label class="f"><span>Profile description <em>max 1000</em></span><textarea data-cd="description" maxlength="1000" style="min-height:90px">${esc(f.description)}</textarea></label>
+    <div class="sub-h">Ability scores <em class="hint">1-30</em></div>
+    <div class="stat-grid">${ABIL.map(stat).join("")}</div>`;
+}
+function picturesHTML(d) {
+  const slot = (kind, title, note, has, url, round) => {
+    const busy = CHARS.busy === kind;
+    return `<div class="pic-row"><div class="pic-box${round ? " round" : ""}" style="--h:${hueOf(d.name)};${url && url !== "pending" ? `background-image:url('${esc(url)}')` : ""}">${busy ? `<span class="pic-note">Uploading…</span>` : url || !has ? "" : `<span class="pic-note">Loading…</span>`}</div>
+      <div class="pic-info"><b>${title}</b><span class="hint">${note}</span>
+        <div class="pic-btns"><button type="button" class="tiny" data-pic-pick="${kind}" ${busy ? "disabled" : ""}>${has ? "Replace" : "Upload"}</button>${has ? `<button type="button" class="tiny danger" data-pic-del="${kind}" ${busy ? "disabled" : ""}>Remove</button>` : ""}</div>
+        <input type="file" id="pic-file-${kind}" data-pic-file="${kind}" accept="image/*,video/mp4" hidden></div></div>`;
+  };
+  return slot("picture", "Profile picture", "Shown next to the name.", d.picture, CHARS.pics[d.id], true)
+    + slot("image", "Big image", "A large picture for the character.", d.image, CHARS.big[d.id], false)
+    + `<p class="hint" style="margin:0">PNG, JPG, GIF or WEBP up to 8 MB, or an MP4 up to 25 MB (turned into a GIF).</p>`;
+}
+function actionsHTML(d) {
+  if (!d.actionList.length) return `<p class="hint" style="margin:0">No custom actions yet.</p>`;
+  return d.actionList.map((a, i) => {
+    const j = a.json, steps = j ? (j.steps || []).length : 0;
+    const text = j ? String(j.description || j.title || "").replace(/\s+/g, " ").slice(0, 90) || `${steps} step${steps === 1 ? "" : "s"}` : "Can't be opened here";
+    const sure = CHARS.confirmDel === i;
+    return `<div class="lib-item"><span class="char-act"><span>${esc(a.name)}</span><em>${esc(text)}</em></span><span class="char-act-btns">${j ? `<button type="button" class="tiny" data-char-edit="${i}">Edit</button>` : ""}<button type="button" class="tiny danger" data-char-del="${i}">${sure ? "Sure?" : "Delete"}</button></span></div>`;
+  }).join("");
+}
 function renderCharModal() {
   const d = CHARS.detail;
   if (!d) return;
@@ -2128,27 +2209,96 @@ function renderCharModal() {
   $("char-avatar").style.setProperty("--h", hueOf(d.name));
   const pic = CHARS.pics[d.id];
   $("char-avatar").style.backgroundImage = pic && pic !== "pending" ? `url('${pic}')` : "";
-  const rows = d.actionList.map((a, i) => {
-    const text = String(a.json.description || a.json.title || "").replace(/\s+/g, " ").slice(0, 90) || `${(a.json.steps || []).length} step${(a.json.steps || []).length === 1 ? "" : "s"}`;
-    return `<div class="lib-item"><span class="char-act"><span>${esc(a.name)}</span><em>${esc(text)}</em></span><button type="button" class="tiny" data-char-edit="${i}">Edit</button></div>`;
-  });
-  $("char-body").innerHTML = rows.length ? rows.join("") : `<p class="hint" style="margin:0">No custom actions yet.</p>`;
-  $("char-new").textContent = "New action";
+  document.querySelectorAll("#char-tabs .tab").forEach(t => t.setAttribute("aria-pressed", String(t.dataset.charTab === CHARS.tab)));
+  const body = $("char-body"), foot = $("char-foot");
+  if (CHARS.tab === "details") {
+    if (!CHARS.draft) CHARS.draft = draftFor(d);
+    const keep = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.cd : null;
+    body.innerHTML = detailsHTML(d);
+    foot.innerHTML = `<button type="button" class="ghost" id="cd-reset">Reset</button><button type="button" class="primary" id="cd-save">Save changes</button>`;
+    const el = keep && body.querySelector(`[data-cd="${keep}"]`); if (el && keep === "guild") el.focus();
+  } else if (CHARS.tab === "pictures") {
+    if (d.image && !(d.id in CHARS.big)) loadBig(d.id);
+    body.innerHTML = picturesHTML(d); foot.innerHTML = "";
+  } else {
+    body.innerHTML = actionsHTML(d);
+    foot.innerHTML = `<button type="button" class="primary" id="char-new">New action</button>`;
+  }
 }
 async function openCharacter(pid) {
   const c = (CHARS.list || []).find(x => x.id === pid);
   if (!c) return;
-  CHARS.detail = null;
+  CHARS.detail = null; CHARS.tab = "actions"; CHARS.draft = null; CHARS.confirmDel = null; CHARS.busy = "";
+  CHARS.classGuild = AUTH.guild;
   $("char-modal").hidden = false;
   $("char-title").textContent = c.name; $("char-sub").textContent = charMeta(c);
   $("char-avatar").style.setProperty("--h", hueOf(c.name));
   $("char-avatar").style.backgroundImage = "";
-  $("char-body").innerHTML = `<p class="hint">Loading…</p>`;
+  document.querySelectorAll("#char-tabs .tab").forEach(t => t.setAttribute("aria-pressed", String(t.dataset.charTab === "actions")));
+  $("char-body").innerHTML = `<p class="hint">Loading…</p>`; $("char-foot").innerHTML = "";
   try {
     const d = await api(`/api/characters/${encodeURIComponent(pid)}`);
     if ($("char-modal").hidden) return;
     CHARS.detail = d; renderCharModal();
+    loadExistingLib(CHARS.classGuild).then(() => { if (CHARS.tab === "details" && !$("char-modal").hidden) renderCharModal(); });
   } catch (e) { $("char-body").innerHTML = `<p class="hint" style="color:var(--bad)">${esc(e.message)}</p>`; }
+}
+async function saveCharacterDetails() {
+  const d = CHARS.detail, f = CHARS.draft;
+  if (!d || !f) return;
+  const body = {}, name = f.name.trim(), level = Number(f.level), stats = {};
+  if (!name) { toast("Give the character a name."); return; }
+  if (!Number.isInteger(level) || level < 1 || level > d.maxLevel) { toast(`The level must be 1 to ${d.maxLevel}.`); return; }
+  for (const a of ABIL) {
+    const v = Number(f.stats[a]);
+    if (!Number.isInteger(v) || v < 1 || v > 30) { toast(`${a} must be a whole number from 1 to 30.`); return; }
+    if (v !== d.stats[a]) stats[a] = v;
+  }
+  if (name !== d.name) body.name = name;
+  if (f.description.trim() !== d.description) body.description = f.description.trim();
+  if (level !== d.level) body.level = level;
+  if (Object.keys(stats).length) body.stats = stats;
+  if (f.class && f.class !== d.class) { body.class = f.class; if (!d.classes.includes(f.class)) body.guild = CHARS.classGuild; }
+  if (!Object.keys(body).length) { toast("Nothing changed."); return; }
+  const btn = $("cd-save"); btn.disabled = true; btn.textContent = "Saving…";
+  try {
+    const res = await api(`/api/characters/${encodeURIComponent(d.id)}`, {method: "PATCH", body: JSON.stringify(body)});
+    CHARS.draft = null; applyDetail(res); toast(res.message || "Saved.");
+  } catch (e) { toast(e.message); if ($("cd-save")) { $("cd-save").disabled = false; $("cd-save").textContent = "Save changes"; } }
+}
+async function uploadPicture(kind, file) {
+  const d = CHARS.detail;
+  if (!d || !file) return;
+  const video = file.type.startsWith("video/"), limit = video ? 25 : 8;
+  if (!(file.type.startsWith("image/") || file.type === "video/mp4")) { toast("Pick an image or an MP4."); return; }
+  if (file.size > limit * 1024 * 1024) { toast(`That file is over ${limit} MB.`); return; }
+  CHARS.busy = kind; renderCharModal();
+  try {
+    const res = await api(`/api/characters/${encodeURIComponent(d.id)}/picture?kind=${kind}`, {method: "PUT", body: file, contentType: file.type});
+    CHARS.busy = "";
+    if (kind === "picture") { revokeMedia(CHARS.pics, d.id); delete CHARS.pics[d.id]; } else revokeMedia(CHARS.big, d.id);
+    applyDetail(res);
+    if (kind === "picture") loadPicture(d.id); else loadBig(d.id);
+    toast(res.message || "Picture updated.");
+  } catch (e) { CHARS.busy = ""; renderCharModal(); toast(e.message); }
+}
+async function removePicture(kind) {
+  const d = CHARS.detail;
+  if (!d) return;
+  try {
+    const res = await api(`/api/characters/${encodeURIComponent(d.id)}/picture?kind=${kind}`, {method: "DELETE"});
+    applyDetail(res); toast(res.message || "Picture removed.");
+  } catch (e) { toast(e.message); }
+}
+async function deleteCharacterAction(i) {
+  const d = CHARS.detail, a = d && d.actionList[i];
+  if (!a) return;
+  if (CHARS.confirmDel !== i) { CHARS.confirmDel = i; renderCharModal(); clearTimeout(CHARS.confirmTimer); CHARS.confirmTimer = setTimeout(() => { CHARS.confirmDel = null; if (!$("char-modal").hidden) renderCharModal(); }, 4000); return; }
+  CHARS.confirmDel = null;
+  try {
+    const res = await api(`/api/characters/${encodeURIComponent(d.id)}/actions/${encodeURIComponent(a.name)}`, {method: "DELETE"});
+    applyDetail(res); toast(res.message || "Removed.");
+  } catch (e) { renderCharModal(); toast(e.message); }
 }
 function workOnCharacter(action) {
   const d = CHARS.detail;
@@ -2165,12 +2315,34 @@ function workOnCharacter(action) {
 }
 document.addEventListener("click", ev => {
   const b = ev.target.closest("button"); if (!b) return;
+  if (CHARS.confirmDel != null && b.dataset.charDel == null) { CHARS.confirmDel = null; if (!$("char-modal").hidden && CHARS.tab === "actions" && !b.dataset.charEdit && b.id !== "char-close") renderCharModal(); }
   if (b.dataset.charOpen) openCharacter(b.dataset.charOpen);
   else if (b.id === "chars-retry") { CHARS.error = ""; renderCharacters(); loadCharacters(); }
   else if (b.id === "char-close") $("char-modal").hidden = true;
   else if (b.id === "char-new") workOnCharacter(null);
+  else if (b.dataset.charTab) { CHARS.tab = b.dataset.charTab; CHARS.confirmDel = null; renderCharModal(); }
   else if (b.dataset.charEdit != null && CHARS.detail) workOnCharacter(CHARS.detail.actionList[Number(b.dataset.charEdit)]);
+  else if (b.dataset.charDel != null) deleteCharacterAction(Number(b.dataset.charDel));
+  else if (b.id === "cd-save") saveCharacterDetails();
+  else if (b.id === "cd-reset") { CHARS.draft = null; renderCharModal(); }
+  else if (b.dataset.picPick) $("pic-file-" + b.dataset.picPick).click();
+  else if (b.dataset.picDel) removePicture(b.dataset.picDel);
   else if (b.id === "char-done") { CHAR = null; setMode("characters"); }
+});
+document.addEventListener("change", ev => {
+  const t = ev.target;
+  if (t.dataset && t.dataset.picFile) { const file = t.files && t.files[0]; t.value = ""; uploadPicture(t.dataset.picFile, file); }
+});
+document.addEventListener("input", ev => {
+  const t = ev.target, k = t.dataset && t.dataset.cd;
+  if (!k || !CHARS.draft) return;
+  if (k.startsWith("stat:")) {
+    const a = k.slice(5); CHARS.draft.stats[a] = t.value;
+    const m = document.querySelector(`[data-mod="${a}"]`); if (m) m.textContent = modText(t.value);
+  } else if (k === "guild") {
+    CHARS.classGuild = t.value; renderCharModal();
+    loadExistingLib(t.value).then(() => { if (CHARS.tab === "details" && !$("char-modal").hidden) renderCharModal(); });
+  } else CHARS.draft[k] = t.value;
 });
 document.addEventListener("keydown", ev => {
   if (ev.key === "Escape" && !$("char-modal").hidden) $("char-modal").hidden = true;
