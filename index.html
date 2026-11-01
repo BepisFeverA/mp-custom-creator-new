@@ -319,15 +319,15 @@ button:disabled { opacity: .38; }
 .acct-menu { border-radius: 4px; box-shadow: 0 5px 5px -3px rgb(0 0 0 / .2), 0 8px 10px 1px rgb(0 0 0 / .14), 0 3px 14px 2px rgb(0 0 0 / .12); }
 .status { border-radius: 4px; }
 .toast { background: #323232; color: #fff; }
-#ac { position: fixed; z-index: 40; min-width: 240px; max-width: min(440px, calc(100vw - 16px)); max-height: 264px; overflow-y: auto; background: var(--panel); border: 1px solid var(--field); border-radius: 4px; padding: 4px 0; font-size: 13px; box-shadow: 0 5px 5px -3px rgb(0 0 0 / .2), 0 8px 10px 1px rgb(0 0 0 / .14), 0 3px 14px 2px rgb(0 0 0 / .12); }
+#ac { position: fixed; z-index: 40; min-width: 240px; max-width: min(440px, calc(100vw - 16px)); max-height: 264px; overflow-y: auto; overflow-x: hidden; background: var(--panel); border: 1px solid var(--field); border-radius: 4px; padding: 4px 0; font-size: 13px; box-shadow: 0 5px 5px -3px rgb(0 0 0 / .2), 0 8px 10px 1px rgb(0 0 0 / .14), 0 3px 14px 2px rgb(0 0 0 / .12); }
 .ac-row { display: flex; align-items: center; gap: 8px; padding: 4px 10px; min-height: 28px; cursor: pointer; }
 .ac-row.on { background: color-mix(in srgb, var(--accent) 22%, transparent); }
 .ac-row:hover:not(.on) { background: color-mix(in srgb, var(--fg) 8%, transparent); }
 .ac-badge { flex: none; width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; border-radius: 3px; font: 500 10px var(--mono); color: var(--muted); background: color-mix(in srgb, var(--fg) 12%, transparent); }
-.ac-label { white-space: nowrap; }
+.ac-label { white-space: nowrap; flex: none; }
 .ac-label.mono { font-family: var(--mono); font-size: 12.5px; }
 .ac-label b { color: var(--accent); font-weight: 700; }
-.ac-detail { margin-left: auto; padding-left: 16px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.ac-detail { margin-left: auto; padding-left: 16px; color: var(--muted); font-size: 12px; white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .ac-row .ico { width: 16px; height: 16px; margin: 0; flex: none; }
 #chars { display: flex; flex-direction: column; gap: 14px; }
 .chars-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
@@ -644,7 +644,12 @@ function decorate(html, mode) {
 }
 function unknownTags(texts) { const out = []; for (const t of texts) for (const m of String(t || "").matchAll(STATUS_TAG_RE)) if (!ALL_STATUSES.some(s => s.toLowerCase() === m[1].trim().toLowerCase())) out.push(m[1].trim()); return out; }
 
+const FIXED_VARIABLES = {"lastRoll": "Total of the last explicit roll: roll(), Roll, attack, save, check, damage or healing. Damage uses the rolled amount before damage modifiers.", "lastAttackDidHit": "Whether the last attack hit.", "lastAttackDidCrit": "Whether the last attack was a critical hit.", "lastAttackRollTotal": "Last attack total, including bonuses.", "lastAttackNaturalRoll": "Last attack's selected natural d20.", "lastAttackHadAdvantage": "Last attack: 0 normal, 1 advantage, -1 disadvantage, 2 elven accuracy.", "lastAttackAC": "Effective AC used for the last attack, after AC penetration; 0 if unknown.", "lastAttackMargin": "Last attack total minus its effective target AC; 0 if AC is unknown.", "lastSaveDidPass": "Whether the last saving throw passed.", "lastSaveDC": "Last saving throw's DC.", "lastSaveRollTotal": "Last saving throw total, including bonuses.", "lastSaveNaturalRoll": "Last save's selected natural d20.", "lastSaveAbility": "Last save ability, e.g. Dexterity. Text; usable in comparisons or output.", "lastSaveMargin": "Last save total minus its DC.", "lastCheckDidPass": "Whether the last program Check passed.", "lastCheckRollTotal": "Last program Check total.", "lastCheckNaturalRoll": "Last program Check's selected natural d20.", "lastCheckDC": "Last Check DC, or the opponent's total for a contest.", "lastCheckAbility": "Last Check ability code, e.g. WIS. Text.", "lastCheckMargin": "Last Check total minus its DC.", "lastDamage": "Damage from the last Damage or Burst step, after damage modifiers; can exceed HP lost.", "lastDamageRoll": "Last Damage step's rolled amount, before damage modifiers.", "lastDamageTaken": "HP plus temporary HP removed by the last Damage or Burst step.", "lastHPDamage": "Actual HP removed by the last Damage or Burst step; excludes temporary HP.", "lastDamageType": "Last Damage step's damage type. Text.", "lastTargetWasDefeated": "Whether the last Damage or Burst step reduced a living target to 0 HP.", "lastHealing": "Actual HP restored by the last Heal step, including self-healing.", "lastHealingRoll": "Last Heal step's base amount before healing bonuses.", "lastHealingRequested": "Last Heal step's boosted amount before the recipient's missing-HP cap.", "lastTempHp": "Temporary HP actually granted by the last Temp HP step or Heal step granting temp HP.", "lastCounterName": "Last counter used by an action cost or Counter step. Empty on failure. Text.", "lastCounterRemaining": "Remaining value of the last counter used; 0 on failure.", "lastCounterUsedAmount": "Actual charges spent; negative when charges were gained; 0 on failure.", "lastCounterRequestedAmount": "Requested charges spent, before caps; negative for gains. Set/reset use the requested reduction from the old value.", "lastCounterBefore": "Counter value before the last operation; 0 on failure.", "lastCounterDelta": "Actual counter change: positive for gains and negative for spending.", "lastCounterMin": "Minimum of the last successfully used counter.", "lastCounterMax": "Maximum of the last successfully used counter.", "lastCounterDidSucceed": "Whether the last counter operation succeeded.", "targetIndex": "Current target index, starting at 0.", "targetNumber": "Current target number, starting at 1.", "targetCount": "Number of selected targets in this action call.", "targetIteration": "Current program Repeat iteration, starting at 1; 1 outside Repeat.", "targetIterations": "Maximum iterations of the current Repeat; 1 outside Repeat.", "damage": "Total modified damage to the current target in this action.", "raw_damage": "Total damage to the current target before incoming damage modifiers.", "actual_damage": "Total actual HP removed from the current target by this action.", "healed": "Total HP restored to the current target by this action.", "hit": "Current attack branch hit state.", "crit": "Current attack branch critical-hit state.", "saved": "Current save branch success state.", "check_total": "Last program Check total.", "check_success": "Last program Check success.", "iteration": "Current Repeat iteration, starting at 1.", "LEVEL": "Caster level.", "spell_level": "Casting level supplied for this action; 0 if absent.", "round": "Current combat round; 0 outside combat.", "inCombat": "Whether combat is active.", "spell_attack_bonus": "Default spell attack bonus: CAST + PROF.", "spell_dc": "Default spell save DC: 8 + CAST + PROF.", "spell": "Casting ability modifier (same as CAST).", "STR": "Caster's STR ability modifier.", "DEX": "Caster's DEX ability modifier.", "CON": "Caster's CON ability modifier.", "INT": "Caster's INT ability modifier.", "WIS": "Caster's WIS ability modifier.", "CHA": "Caster's CHA ability modifier.", "PROF": "Caster's proficiency bonus.", "CAST": "Caster's casting ability modifier.", "self_hp": "Caster's current HP.", "self_max_hp": "Caster's maximum HP.", "self_missing_hp": "Caster's missing HP.", "self_hp_percent": "Caster's HP percentage (0–100, rounded down).", "self_temp_hp": "Caster's temporary HP.", "self_ac": "Caster's current AC (0 if unknown).", "self_speed": "Caster's current speed.", "self_level": "Caster's level.", "self_alive": "Caster's whether alive.", "self_name": "Caster's name (text).", "self_bleed_potency": "Caster's current Bleed potency.", "self_bleed_count": "Caster's current Bleed count.", "self_burn_potency": "Caster's current Burn potency.", "self_burn_count": "Caster's current Burn count.", "self_rupture_potency": "Caster's current Rupture potency.", "self_rupture_count": "Caster's current Rupture count.", "self_sinking_potency": "Caster's current Sinking potency.", "self_sinking_count": "Caster's current Sinking count.", "self_tremor_potency": "Caster's current Tremor potency.", "self_tremor_count": "Caster's current Tremor count.", "self_poise_potency": "Caster's current Poise potency.", "self_poise_count": "Caster's current Poise count.", "self_chill_potency": "Caster's current Chill potency.", "self_chill_count": "Caster's current Chill count.", "self_str": "Caster's STR ability modifier.", "self_dex": "Caster's DEX ability modifier.", "self_con": "Caster's CON ability modifier.", "self_int": "Caster's INT ability modifier.", "self_wis": "Caster's WIS ability modifier.", "self_cha": "Caster's CHA ability modifier.", "target_hp": "Current target's current HP.", "target_max_hp": "Current target's maximum HP.", "target_missing_hp": "Current target's missing HP.", "target_hp_percent": "Current target's HP percentage (0–100, rounded down).", "target_temp_hp": "Current target's temporary HP.", "target_ac": "Current target's current AC (0 if unknown).", "target_speed": "Current target's current speed.", "target_level": "Current target's level.", "target_alive": "Current target's whether alive.", "target_name": "Current target's name (text).", "target_bleed_potency": "Current target's current Bleed potency.", "target_bleed_count": "Current target's current Bleed count.", "target_burn_potency": "Current target's current Burn potency.", "target_burn_count": "Current target's current Burn count.", "target_rupture_potency": "Current target's current Rupture potency.", "target_rupture_count": "Current target's current Rupture count.", "target_sinking_potency": "Current target's current Sinking potency.", "target_sinking_count": "Current target's current Sinking count.", "target_tremor_potency": "Current target's current Tremor potency.", "target_tremor_count": "Current target's current Tremor count.", "target_poise_potency": "Current target's current Poise potency.", "target_poise_count": "Current target's current Poise count.", "target_chill_potency": "Current target's current Chill potency.", "target_chill_count": "Current target's current Chill count.", "target_str": "Current target's STR ability modifier.", "target_dex": "Current target's DEX ability modifier.", "target_con": "Current target's CON ability modifier.", "target_int": "Current target's INT ability modifier.", "target_wis": "Current target's WIS ability modifier.", "target_cha": "Current target's CHA ability modifier.", "previous_damage": "Value from a referenced program node: damage.", "previous_actual_damage": "Value from a referenced program node: actual_damage.", "previous_raw_damage": "Value from a referenced program node: raw_damage.", "previous_healed": "Value from a referenced program node: healed."};
 const STEP_TYPES = {
+  variable: {label: "Variable", blurb: "Saves a number or expression for later steps", fields: [
+    {k: "name", label: "Variable name", type: "text", def: "power", req: true, hint: "use {power} in later dice or text"},
+    {k: "value", label: "Value / expression", type: "area", def: 'roll("1d6")', req: true, mono: true,
+      hint: '5, lastDamage, or max(1, roll("1d6") + DEX). Functions: roll, min, max, abs, floor, ceil, round, int, float, str, sqrt. Dice use the bot’s dice syntax.'}]},
   attack: {label: "Attack roll", blurb: "Rolls to hit", fields: [
     {k: "ability", label: "Ability", type: "select", options: [...ABIL, "CAST"], def: "STR"},
     {k: "bonus", label: "Extra to hit", type: "int", min: -20, max: 20, def: 0},
@@ -692,7 +697,7 @@ const STEP_TYPES = {
   else: {label: "Otherwise", blurb: "Runs when the If above is false", fields: []},
 };
 const OMIT_DEFAULT = new Set(["bonus", "crit_range", "proficient", "always_hit", "always_crit", "dc", "damage_type", "alt_type", "save", "crit", "to", "from", "kind"]);
-const ADD_ORDER = ["attack", "save", "if", "damage", "effect", "heal", "remove", "text", "look", "counter", "grant", "summon", "burst"];
+const ADD_ORDER = ["attack", "save", "variable", "if", "damage", "effect", "heal", "remove", "text", "look", "counter", "grant", "summon", "burst"];
 const LEAVES = ADD_ORDER.filter(t => !GROUPS.includes(t));
 const COND_KEYS = ["when", "chance", "per_round", "target_has", "target_missing", "self_has", "self_missing", "target_stacks", "target_stat", "consumed", "counter_is"];
 const EFFECT_FIELDS = ["name", "kind", "duration", "description", "ac", "speed", "attack", "damage", "save", "taken", "dealt", "tick", "potency", "count", "bleed_bonus_chance", "burn", "pierce", "crit_less", "hit_pct", "status", "taken_ranged", "regen", "attack_adv", "defense_adv", "skip_turn"];
@@ -758,7 +763,7 @@ function groupAncestor(F, i) {
   return -1;
 }
 function treeAuto(i) { const F = flat(), anc = F[i] ? groupAncestor(F, i) : -1; return anc >= 0 && F[anc].node.type === "attack" ? "hit" : "always"; }
-function botAuto(i) { const F = flat(), s = F[i].node, before = F.slice(0, i).map(x => x.node.type); return (!["attack", "save", "text"].includes(s.type) && before.includes("attack") && !before.includes("save")) ? "hit" : "always"; }
+function botAuto(i) { const F = flat(), s = F[i].node, before = F.slice(0, i).map(x => x.node.type); return (!["attack", "save", "text", "variable"].includes(s.type) && before.includes("attack") && !before.includes("save")) ? "hit" : "always"; }
 
 function ofFor(i) {
   const F = flat(), f = F[i];
@@ -866,6 +871,7 @@ function fieldHTML(s, f, i) {
   if (f.needsSave && !hasBefore(i, "save")) return "";
   const lab = `<span>${esc(f.label)}${f.hint ? ` <em>${esc(f.hint)}</em>` : ""}</span>`;
   const v = s[f.k];
+  if (f.type === "area") return `<label class="f" style="grid-column:1/-1">${lab}<textarea rows="4" class="mono" id="${id}" data-s="${s.id}" data-k="${f.k}" maxlength="500" spellcheck="false">${esc(v)}</textarea></label>`;
   if (f.type === "bool") return `<label class="chk"><input type="checkbox" id="${id}" data-s="${s.id}" data-k="${f.k}" ${v ? "checked" : ""}> ${esc(f.label)}</label>`;
   if (f.type === "select") return `<label class="f">${lab}<select id="${id}" data-s="${s.id}" data-k="${f.k}">${f.options.map(o => opt(o, v, (f.labels || {})[o] ?? o)).join("")}</select></label>`;
   if (f.type === "int") return `<label class="f">${lab}<input type="number" id="${id}" data-s="${s.id}" data-k="${f.k}" data-int="1" min="${f.min}" max="${f.max}" value="${v ?? ""}"></label>`;
@@ -937,8 +943,9 @@ function condHTML(s, i) {
       <label class="f"><span>…this many stacks</span><input type="number" id="s${s.id}-w-stacks_min" data-s="${s.id}" data-w="stacks_min" min="1" max="99" value="${esc(c.stacks_min)}"></label>
       ${!isIf && (spent || c.consumed) ? `<label class="chk"><input type="checkbox" id="s${s.id}-w-consumed" data-s="${s.id}" data-w="consumed" ${c.consumed ? "checked" : ""}> Only if the status was spent for a crit</label>` : ""}</div></details>`;
 }
-const BADGE = {if: "IF", else: "ELSE", attack: "ATK", save: "SAVE", damage: "DMG", heal: "HEAL", effect: "FX", remove: "DEL", text: "TXT", counter: "CTR", grant: "ACT", summon: "SUM", burst: "BST", look: "LOOK"};
+const BADGE = {variable: "VAR", if: "IF", else: "ELSE", attack: "ATK", save: "SAVE", damage: "DMG", heal: "HEAL", effect: "FX", remove: "DEL", text: "TXT", counter: "CTR", grant: "ACT", summon: "SUM", burst: "BST", look: "LOOK"};
 const LONG = {
+  variable: "Saves a numeric result for later steps in this action. Use {name} to reuse it; roll(\"1d6\") saves the total of a dice roll.",
   attack: "Rolls to hit. Steps inside it only happen on a hit.",
   save: "The target rolls a save. Steps inside it follow the result.",
   damage: "Deals damage. Doubles its dice on a crit.",
@@ -1248,7 +1255,7 @@ function buildAction() {
   return a;
 }
 
-const okDice = d => typeof d === "string" && DICE_RE.test(d.replace(/\s+/g, ""));
+const okDice = d => typeof d === "string" && DICE_RE.test(d.replace(/\{[A-Za-z_]\w*\}/g,"1").replace(/\s+/g, ""));
 const okUrl = u => /^https?:\/\/[^\s]+\.[^\s]+$/i.test(u);
 function checkSteps(steps, where, errs, warns) {
   ifProblems(steps, where, errs);
@@ -1256,8 +1263,12 @@ function checkSteps(steps, where, errs, warns) {
   if (steps.length > MAX_STEPS) errs.push(`${where}at most ${MAX_STEPS} steps.`);
   steps.forEach((s, i) => {
     const n = `${where}Step ${i + 1}`;
+    if (s.type === "variable") {
+      if (!/^[A-Za-z_][A-Za-z0-9_]{0,39}$/.test(s.name || "")) errs.push(`${n}: a variable name needs 1–40 letters, numbers or underscores and cannot begin with a number.`);
+      if (s.value == null || String(s.value).trim() === "" || String(s.value).length > 500) errs.push(`${n}: enter a number or expression of up to 500 characters.`);
+    }
     if (["damage", "heal"].includes(s.type) && !(s.type === "heal" && s.percent_damage) && !okDice(s.dice)) errs.push(`${n}: "${s.dice || "(empty)"}" isn't dice the bot understands. Try 2d6+STR.`);
-    if (s.type === "save" && typeof s.dc === "string" && s.dc !== "auto" && !/^[+-]?(\d+|STR|DEX|CON|INT|WIS|CHA|PROF|LEVEL|CAST)([+-](\d+|STR|DEX|CON|INT|WIS|CHA|PROF|LEVEL|CAST))*$/i.test(s.dc)) errs.push(`${n}: the DC must be auto, a number, or something like 8+PROF+INT.`);
+    if (s.type === "save" && typeof s.dc === "string" && s.dc !== "auto" && !/^[+-]?(\d+|STR|DEX|CON|INT|WIS|CHA|PROF|LEVEL|CAST)([+-](\d+|STR|DEX|CON|INT|WIS|CHA|PROF|LEVEL|CAST))*$/i.test(s.dc.replace(/\{[A-Za-z_]\w*\}/g,"1"))) errs.push(`${n}: the DC must be auto, a number, or something like 8+PROF+INT.`);
     if (s.type === "text" && !s.text) errs.push(`${n}: write the text line.`);
     if (s.type === "look") {
       if (!LOOK_OUT.some(k => s[k])) errs.push(`${n}: the look step doesn't change anything yet: give it a title, text, image or color.`);
@@ -1346,6 +1357,7 @@ const PRETTY = d => String(d || "").replace(/\+/g, " + ").replace(/-/g, " − ")
 function sayStep(s, who) {
   const on = (s.to || s.from) === "self" ? "you" : who;
   switch (s.type) {
+    case "variable": return `saves ${s.value ?? "0"} as ${s.name || "a variable"}; reuse {${s.name || "name"}} later`;
     case "attack": return `makes a ${s.ability} attack roll` + (s.always_hit ? " that never misses" : "") + (s.crit_range && s.crit_range < 20 ? `, crits on ${s.crit_range}+` : "") + (s.ignore_flat ? `, ignores ${s.ignore_flat} AC` : "") + (s.crit_consume ? `; spends ${s.crit_consume.min}+ ${s.crit_consume.effect} for a crit` : "");
     case "save": return `${who} makes a ${s.ability === "BEST" ? "best-stat" : s.ability} save (DC ${s.dc ?? "auto"})`;
     case "damage": return `${PRETTY(s.dice)}${s.damage_type ? " " + s.damage_type : ""}${s.alt_type ? "/" + s.alt_type : ""} damage` + ({half: ", half on a save", none: ", none on a save"}[s.save] || "")
@@ -1374,7 +1386,7 @@ function whenText(s) {
   if (s.consumed) bits.push("if the status was spent");
   return bits.length ? ` (${bits.join(", ")})` : "";
 }
-function withAutoWhen(steps) { return steps.map((s, i) => { const before = steps.slice(0, i).map(x => x.type); return Object.assign({}, s, {when: s.when || ((!["attack", "save", "text"].includes(s.type) && before.includes("attack") && !before.includes("save")) ? "hit" : "always")}); }); }
+function withAutoWhen(steps) { return steps.map((s, i) => { const before = steps.slice(0, i).map(x => x.type); return Object.assign({}, s, {when: s.when || ((!["attack", "save", "text", "variable"].includes(s.type) && before.includes("attack") && !before.includes("save")) ? "hit" : "always")}); }); }
 function previewIndex() {
   const val = $("pv-var").value;
   const idx = val === "" ? S.active : Number(val);
@@ -1783,7 +1795,7 @@ document.addEventListener("input", ev => {
     else if (t.dataset.sc) s.scale[t.dataset.sc] = val;
     else if (t.dataset.cc) { s.cc[t.dataset.cc] = val; if (t.dataset.cc === "on") { renderSteps(); $(t.id)?.focus(); } }
     else if (t.dataset.w) s.cond[t.dataset.w] = t.type === "checkbox" ? t.checked : t.value;
-    if (t.dataset.k === "dice") t.classList.toggle("invalid", t.value.trim() !== "" && !DICE_RE.test(t.value.replace(/\s+/g, "")));
+    if (t.dataset.k === "dice") t.classList.toggle("invalid", t.value.trim() !== "" && !okDice(t.value));
     if (t.tagName === "SELECT" || t.dataset.k === "name") { const pos = t.id; renderSteps(); const el = $(pos); if (el) { el.focus(); if (el.setSelectionRange && el.type === "text") el.setSelectionRange(el.value.length, el.value.length); } }
     S.example = null;
     update();
@@ -2941,6 +2953,10 @@ const TARGET_NOTE = {STR: "the target's STR modifier", DEX: "the target's DEX mo
   AC: "the target's armor class", SPEED: "the target's speed in ft", HP: "the target's current HP", MAXHP: "the target's max HP"};
 const OWN_VARS = [["STR", "your STR modifier"], ["DEX", "your DEX modifier"], ["CON", "your CON modifier"], ["INT", "your INT modifier"], ["WIS", "your WIS modifier"], ["CHA", "your CHA modifier"],
   ["PROF", "your proficiency bonus"], ["LEVEL", "your level"], ["CAST", "your spellcasting modifier"]].map(([label, detail]) => ({label, insert: label, detail, badge: "v", mono: true}));
+const FIXED_VAR_ITEMS = Object.entries(FIXED_VARIABLES).map(([label, detail]) => ({label, insert: label, detail, badge: "v", mono: true}));
+const EXPRESSION_FUNCTIONS = [["roll(", "roll dice and return the total, e.g. roll(\"2d6\")"], ["min(", "smallest value"], ["max(", "largest value"], ["abs(", "absolute value"], ["floor(", "round down"], ["ceil(", "round up"], ["round(", "round to nearest whole number"], ["int(", "convert to integer"], ["float(", "convert to number"], ["str(", "convert to text"], ["sqrt(", "square root"]].map(([label, detail]) => ({label, insert: label, detail, badge: "f", mono: true}));
+const wrappedVars = () => FIXED_VAR_ITEMS.map(it => ({...it, label: `{${it.label}}`, insert: `{${it.insert}}`}));
+const runtimeMatches = (items, q) => { const low=q.toLowerCase(); return [...items.filter(i=>i.label.toLowerCase().startsWith(low)), ...items.filter(i=>!i.label.toLowerCase().startsWith(low) && i.label.toLowerCase().includes(low))]; };
 const TARGET_VARS = TARGET_STATS.map(s => ({label: "T." + s, insert: "T." + s, detail: TARGET_NOTE[s], badge: "T", mono: true}));
 const SPEED_VARS = [["{SPEED}", "your speed ÷ 15"], ["{HP10}", "your max HP ÷ 10"]].map(([label, detail]) => ({label, insert: label, detail, badge: "v", mono: true}));
 const DICE_SHAPES = ["1d4", "1d6", "1d8", "1d10", "1d12", "1d20", "2d6", "2d8", "3d6"].map(d => ({label: d, insert: d, detail: "roll " + d, badge: "d", mono: true}));
@@ -2955,6 +2971,9 @@ function acKind(el) {
   if (d.w === "target_stat" || (d.b || "").endsWith("target_stat")) return "stat";
   if (d.w === "counter_is" || (d.b || "").endsWith("counter_is")) return "counter";
   if (["min", "max", "reset_to"].includes(d.ctField)) return "formula";
+  if (d.s && d.k === "value" && locate(d.s)?.node.type === "variable") return "expression";
+  if (["value", "onError", "dc"].includes(d.fwField)) return "expression";
+  if (["dice", "amount"].includes(d.fwField)) return "dice";
   if (d.s && ["dice", "dc", "amount"].includes(d.k)) return d.k;
   if (d.acList || el.getAttribute("list")) return "list";
   return "text";
@@ -2976,10 +2995,27 @@ function suggest(el, force) {
       const q = inner.slice(7).trimStart();
       return {items: pickMatches(ALL_STATUSES.map(n => statusItem(n, true)), q).slice(0, 40), from: open, to, q};
     }
-    if (!/^[A-Za-z]*$/.test(inner)) return null;
-    const own = pickMatches(TAG_ITEMS, "{" + inner);
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$|^$/.test(inner)) return null;
+    const own = runtimeMatches([...TAG_ITEMS, ...wrappedVars()], "{" + inner);
     const tag = "{status:".startsWith("{" + inner.toLowerCase()) ? [{label: "{status:", insert: "{status:", detail: "a status with its icon", badge: "{}", mono: true, keep: true}] : [];
     return {items: [...own, ...tag], from: open, to, q: "{" + inner};
+  }
+  if (kind === "expression") {
+    // Quoted dice strings use the same {variable} syntax as later Dice fields.
+    let quote="", escaped=false;
+    for (const ch of before) { if(escaped) {escaped=false;continue;} if(ch==="\\") {escaped=true;continue;} if(quote) {if(ch===quote)quote="";} else if(ch==='"'||ch==="'")quote=ch; }
+    if (quote) {
+      const open=before.lastIndexOf("{"), inner=before.slice(open+1);
+      if(open<0 || !/^[A-Za-z0-9_]*$/.test(inner)) return null;
+      const suffix=/^[A-Za-z0-9_]*\}?/.exec(v.slice(pos))[0];
+      return {items:runtimeMatches(wrappedVars(),"{"+inner).slice(0,40),from:open,to:pos+suffix.length,q:"{"+inner};
+    }
+    const word=/[A-Za-z_][A-Za-z0-9_]*$/.exec(before)?.[0] || "";
+    if (!word && !force) return null;
+    const items=runtimeMatches([...FIXED_VAR_ITEMS, ...EXPRESSION_FUNCTIONS], word).slice(0,40);
+    if (!force && items.length===1 && items[0].label===word) return null;
+    const suffix=/^[A-Za-z0-9_]*/.exec(v.slice(pos))[0];
+    return {items, from:pos-word.length, to:pos+suffix.length, q:word};
   }
   if (kind === "list") {
     const list = document.getElementById(el.dataset.acList || el.getAttribute("list") || "");
@@ -3014,10 +3050,19 @@ function suggest(el, force) {
     if (shown.length === 1 && shown[0].label.toLowerCase() === word.toLowerCase()) return null;
     return {items: shown, from: pos - word.length, to: pos, q: word};
   }
+  const open=before.lastIndexOf("{");
+  if (open>=0 && before.indexOf("}",open)<0) {
+    const inner=before.slice(open+1);
+    if (/^[A-Za-z0-9_]*$/.test(inner)) {
+      const suffix=/^[A-Za-z0-9_]*\}?/.exec(v.slice(pos))[0];
+      return {items:runtimeMatches(wrappedVars(), "{"+inner).slice(0,40), from:open, to:pos+suffix.length, q:"{"+inner};
+    }
+  }
   const token = /[A-Za-z0-9_.@{]*$/.exec(before)[0];
   if (!token && !force && before.trim() !== "" && !/[+\-]\s*$/.test(before)) return null;
-  const pool = kind === "dice" ? [...OWN_VARS, ...TARGET_VARS, ...SPEED_VARS, ...DICE_SHAPES] : OWN_VARS;
-  const items = pickMatches(pool, token).slice(0, 40);
+  const runtime = FIXED_VAR_ITEMS.filter(it=>!OWN_VARS.some(own=>own.label===it.label)).map(it=>({...it, insert:`{${it.insert}}`}));
+  const pool = kind === "dice" ? [...OWN_VARS, ...TARGET_VARS, ...SPEED_VARS, ...DICE_SHAPES, ...runtime] : [...OWN_VARS, ...runtime];
+  const items = runtimeMatches(pool, token).slice(0, 40);
   if (items.length === 1 && items[0].label.toLowerCase() === token.toLowerCase()) return null;
   return {items, from: pos - token.length, to: pos, q: token};
 }
@@ -3026,7 +3071,7 @@ function acRender() {
   acBox.innerHTML = AC.items.map((it, i) => {
     const low = it.label.toLowerCase(), n = q && low.startsWith(q) ? q.length : 0;
     const label = n ? `<b>${esc(it.label.slice(0, n))}</b>${esc(it.label.slice(n))}` : esc(it.label);
-    return `<div class="ac-row${i === AC.sel ? " on" : ""}" role="option" id="ac-${i}" data-i="${i}" aria-selected="${i === AC.sel}"><span class="ac-badge" ${it.icon ? "hidden" : ""}>${esc(it.badge)}</span>${it.icon || ""}<span class="ac-label${it.mono ? " mono" : ""}">${label}</span><span class="ac-detail">${esc(it.detail || "")}</span></div>`;
+    return `<div class="ac-row${i === AC.sel ? " on" : ""}" role="option" id="ac-${i}" data-i="${i}" aria-selected="${i === AC.sel}"><span class="ac-badge" ${it.icon ? "hidden" : ""}>${esc(it.badge)}</span>${it.icon || ""}<span class="ac-label${it.mono ? " mono" : ""}">${label}</span><span class="ac-detail" title="${esc(it.detail || "")}">${esc(it.detail || "")}</span></div>`;
   }).join("");
 }
 function acPlace() {
@@ -3107,3 +3152,4 @@ addEventListener("scroll", ev => {
 addEventListener("resize", acClose);
 initAuth();
 </script>
+<script src="forge-workspace.js"></script>
