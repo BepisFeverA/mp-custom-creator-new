@@ -1,3 +1,4 @@
+<meta charset="utf-8">
 <title>M/P: Custom Creator</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -378,6 +379,7 @@ button:disabled { opacity: .38; }
         <button type="button" role="tab" data-mode="action" aria-selected="true">Action</button>
         <button type="button" role="tab" data-mode="class" aria-selected="false">Class</button>
         <button type="button" role="tab" data-mode="item" aria-selected="false">Item</button>
+        <button type="button" role="tab" data-mode="counters" aria-selected="false" id="tab-counters" hidden>Counters</button>
         <button type="button" role="tab" data-mode="characters" aria-selected="false" id="tab-chars" hidden>Characters</button>
       </div>
       <div class="picker" style="margin-top:10px">
@@ -402,7 +404,8 @@ button:disabled { opacity: .38; }
     <div class="chars-grid" id="chars-grid"></div>
   </section>
 
-  <div class="grid">
+  <section class="grid" id="counter-area" hidden aria-label="Character counters"></section>
+  <div class="grid" id="forge-grid">
     <div class="forge">
       <div class="link-banner" id="char-banner" hidden></div>
       <div class="link-banner" id="link-banner" hidden></div>
@@ -1335,7 +1338,7 @@ function renderPreview(full) {
 }
 
 let lastJson = "", lastCmd = "";
-function update() { if (MODE === "characters") return; if (MODE !== "action") return updateEntity(); updateAction(); }
+function update() { if (["characters", "counters"].includes(MODE)) return; if (MODE !== "action") return updateEntity(); updateAction(); }
 function updateAction() {
   const a = buildAction();
   const {errs, warns} = check(a);
@@ -1361,7 +1364,7 @@ function updateAction() {
   renderPreview(a);
   try { localStorage.setItem("forge-draft-v4", JSON.stringify(S)); } catch (e) {}
 }
-function rerender() { if (MODE === "characters") return; if (MODE !== "action") { renderEntity(); update(); return; } renderTabs(); renderRules(); renderSteps(); renderFields(); renderLooks(); renderTriggers(); fillBasics(); update(); }
+function rerender() { if (["characters", "counters"].includes(MODE)) return; if (MODE !== "action") { renderEntity(); update(); return; } renderTabs(); renderRules(); renderSteps(); renderFields(); renderLooks(); renderTriggers(); fillBasics(); update(); }
 
 function condFrom(raw, s) {
   if (raw.when) s.cond.when = raw.when;
@@ -1958,14 +1961,17 @@ function renderEntity() {
   if (MODE === "class") renderClassForm(); else if (MODE === "item") renderItemForm();
 }
 function setMode(m) {
-  if (m === "characters" && !AUTH.user) m = "action";
+  if (["characters", "counters"].includes(m) && !AUTH.user) m = "action";
   MODE = m;
   document.querySelectorAll("[data-mode]").forEach(b => b.setAttribute("aria-selected", String(b.dataset.mode === m)));
   const gallery = m === "characters";
+  const counterMode = m === "counters";
   $("chars").hidden = !gallery;
-  document.querySelector(".grid").hidden = gallery;
-  document.querySelectorAll("header .picker, header .head-tools, #ex-blurb").forEach(e => e.classList.toggle("mode-off", gallery));
+  $("counter-area").hidden = !counterMode;
+  $("forge-grid").hidden = gallery || counterMode;
+  document.querySelectorAll("header .picker, header .head-tools, #ex-blurb").forEach(e => e.classList.toggle("mode-off", gallery || counterMode));
   renderCharBanner(); syncSaveLabel(); renderExisting();
+  if (counterMode) { renderCounterArea(); if (!CHARS.list) loadCharacters(); return; }
   if (gallery) { renderCharacters(); loadCharacters(); return; }
   document.querySelectorAll(".forge > section.card").forEach(s => s.classList.toggle("mode-off", s.classList.contains("entity-card") ? s.dataset.only !== m : m !== "action"));
   $("pv-var").closest(".picker").classList.toggle("mode-off", m !== "action");
@@ -2029,7 +2035,8 @@ function logoutLocal() {
   Object.values({...CHARS.pics, ...CHARS.big}).forEach(u => { if (u && u !== "pending") URL.revokeObjectURL(u); });
   CHARS.list = null; CHARS.pics = {}; CHARS.big = {}; CHARS.detail = null; CHARS.draft = null; CHARS.error = ""; CHAR = null; EXIST.libs = {};
   $("char-modal").hidden = true;
-  if (MODE === "characters") setMode("action"); else renderCharBanner();
+  COUNTER_EDITOR.request++; Object.assign(COUNTER_EDITOR, {pid:null, data:null, draft:null, key:null, preview:null, busy:false, confirm:false});
+  if (["characters", "counters"].includes(MODE)) setMode("action"); else renderCharBanner();
   renderAccount();
 }
 function applySession(data) {
@@ -2136,6 +2143,7 @@ async function loadCharacters() {
   catch (e) { CHARS.error = e.message; }
   CHARS.loading = false;
   if (MODE === "characters") renderCharacters();
+  if (MODE === "counters") renderCounterArea();
   for (const c of CHARS.list || []) if (c.picture && !(c.id in CHARS.pics)) loadPicture(c.id);
 }
 const modText = v => { const n = Number(v); return Number.isFinite(n) ? (Math.floor((n - 10) / 2) >= 0 ? "+" : "") + Math.floor((n - 10) / 2) : ""; };
@@ -2367,6 +2375,151 @@ document.addEventListener("keydown", ev => {
   if (ev.key === "Escape" && !$("char-modal").hidden) $("char-modal").hidden = true;
   if ((ev.key === "Enter" || ev.key === " ") && ev.target.classList && ev.target.classList.contains("char")) { ev.preventDefault(); openCharacter(ev.target.dataset.char); }
 });
+const COUNTER_EDITOR = {pid: null, data: null, draft: null, key: null, request: 0, busy: false, confirm: false, preview: null};
+const blankCharacterCounter = () => ({name: "", desc: "", min: "0", max: "5", reset: "long", reset_to: "max", style: "", fill: "", empty: "", value: ""});
+function counterError(text) { const e = $("ct-error"); if (e) e.textContent = text || ""; }
+function characterCounterBody() {
+  const f = COUNTER_EDITOR.draft, definition = {};
+  for (const k of ["name", "desc", "min", "max", "reset", "reset_to", "style", "fill", "empty"]) definition[k] = String(f[k] ?? "").trim();
+  if (!definition.name) throw new Error("Give the counter a name.");
+  const body = {definition};
+  if (String(f.value).trim()) {
+    const value = Number(f.value);
+    if (!Number.isSafeInteger(value)) throw new Error("The current value must be a whole number.");
+    body.value = value;
+  }
+  return body;
+}
+function counterPath() { return `/api/characters/${encodeURIComponent(COUNTER_EDITOR.pid)}/counters`; }
+function counterField(key, title, options = {}) {
+  const f = COUNTER_EDITOR.draft;
+  return `<label class="f"><span>${title}</span><input type="${options.type || "text"}" data-ct-field="${key}" value="${esc(f[key])}" ${options.max ? `maxlength="${options.max}"` : ""} ${options.ph ? `placeholder="${esc(options.ph)}"` : ""} ${options.mono ? 'class="mono"' : ""}></label>`;
+}
+function renderCounterArea() {
+  const box = $("counter-area"), state = COUNTER_EDITOR, list = CHARS.list || [];
+  if (!list.length) {
+    box.innerHTML = `<section class="card"><h2>Character counters</h2><p class="hint">${esc(CHARS.error || (CHARS.loading || !CHARS.list ? "Loading your characters…" : "Create a homebrew character in Discord first, then return here."))}</p><div><button type="button" class="ghost" id="ct-characters">Refresh characters</button></div></section>`;
+    return;
+  }
+  if (!list.some(c => c.id === state.pid)) { state.pid = list[0].id; state.data = null; state.draft = null; }
+  const picker = `<label class="f"><span>Character</span><select id="ct-character">${list.map(c => opt(c.id, state.pid, c.name)).join("")}</select></label>`;
+  if (!state.data) {
+    box.innerHTML = `<section class="card"><h2>Character counters</h2>${picker}<p class="hint" id="ct-error" role="alert">Loading counters…</p><div><button type="button" class="ghost" id="ct-reload">Try again</button></div></section>`;
+    loadCharacterCounters(); return;
+  }
+  if (!state.draft) state.draft = blankCharacterCounter();
+  const data = state.data, f = state.draft;
+  const select = (key, title, options) => `<label class="f"><span>${title}</span><select data-ct-field="${key}">${options.map(([v,l]) => opt(v,f[key],l)).join("")}</select></label>`;
+  const resetOptions = Object.entries(data.resets);
+  const styleNames = {"": "Automatic", dots:"Dots ◉○", circles:"Circles ●○", hex:"Hexagons ⬢⬡", stars:"Stars ★☆", diamonds:"Diamonds ◆◇", squares:"Squares ■□", hearts:"Hearts ♥♡", number:"Number", fraction:"Fraction", bar:"Bar", percent:"Percentage", custom:"Custom symbols"};
+  const custom = data.counters.filter(c => c.editable), inherited = data.counters.filter(c => !c.editable);
+  box.innerHTML = `<div class="forge"><section class="card"><h2>Character counters</h2><p class="hint" style="margin:0">Saved directly to this homebrew character. Actions can spend, gain, reset or check these counters.</p>${picker}
+    <div class="ent-row-head"><span class="hint">${custom.length} / ${data.limit} custom counters</span><button type="button" class="tiny" id="ct-new" ${state.busy ? "disabled" : ""}>New counter</button></div>
+    <div class="ent-list">${custom.length ? custom.map(c => `<div class="lib-item"><span class="char-act"><b>${esc(c.name)}</b><em>${esc(c.value)} / ${esc(c.max)} · ${esc(data.resets[c.reset] || c.reset)}</em></span><button type="button" class="tiny" data-ct-edit="${esc(c.key)}" ${state.busy ? "disabled" : ""}>${c.key === state.key ? "Editing" : "Edit"}</button></div>`).join("") : '<p class="hint">No custom counters yet.</p>'}</div>
+    ${inherited.length ? `<details class="cond"><summary>Class and equipment counters · ${inherited.length}</summary>${inherited.map(c => `<div class="lib-item"><span>${esc(c.name)}</span><span class="hint">${esc(c.value)} / ${esc(c.max)} · ${esc(c.source)}</span></div>`).join("")}</details>` : ""}</section>
+    <section class="card"><h2>${state.key ? "Edit counter" : "New counter"}</h2>
+    ${counterField("name", "Name · max 30", {max:30})}
+    <label class="f"><span>Description · max 150</span><textarea data-ct-field="desc" maxlength="150">${esc(f.desc)}</textarea></label>
+    <div class="row">${counterField("min","Minimum",{max:60,mono:true})}${counterField("max","Maximum",{max:60,mono:true})}${counterField("value","Current value",{type:"number",ph:"Use reset value"})}</div>
+    <div class="row">${select("reset","Reset on",resetOptions)}${counterField("reset_to","Reset to",{max:60,mono:true,ph:"max, min or a formula"})}</div>
+    <div class="row">${select("style","Display style",data.styles.map(s=>[s,styleNames[s] || s]))}${counterField("fill","Filled symbol",{ph:"◉"})}${counterField("empty","Empty symbol",{ph:"○"})}</div>
+    <p class="hint" style="margin:0">A blank current value uses the reset value for a new counter, or keeps the current value when editing. Custom symbols override the selected style. Counters above 10 use the bot's bar.</p>
+    <p class="hint" id="ct-error" role="alert" style="color:var(--bad);margin:0"></p>
+    <div class="head-tools"><button type="button" class="primary" id="ct-save" ${state.busy ? "disabled" : ""}>${state.busy ? "Saving…" : state.key ? "Save changes" : "Add to character"}</button><button type="button" class="ghost" id="ct-check" ${state.busy ? "disabled" : ""}>Check & preview</button>${state.key ? `<button type="button" class="danger" id="ct-delete" ${state.busy ? "disabled" : ""}>${state.confirm ? "Confirm delete" : "Delete counter"}</button>` : ""}</div></section></div>
+    <aside class="bench"><section class="card"><h2>Preview</h2><div class="embed"><div class="embed-body"><b id="ct-preview-name"></b><div id="ct-preview-value" style="white-space:pre-wrap;overflow-wrap:anywhere"></div></div></div><p class="hint" id="ct-preview-note" style="margin:0">Check the counter to calculate its limits and appearance for this character.</p></section>
+    <section class="card"><h2>Formulas</h2><p class="hint" style="margin:0">Minimum, maximum and reset value accept numbers or formulas. Stat names use ability modifiers. Results round down and stay between -99,999 and 99,999.</p>
+    <div class="row">${Object.entries(data.variables).map(([k,v])=>`<span class="hint"><code class="inl">${esc(k)}</code> ${esc(v)}</span>`).join("")}</div>
+    <p class="hint" style="margin:0"><code class="inl">CHA+PROF</code> · <code class="inl">5*LEVEL</code> · <code class="inl">max(1, WIS)</code><br>Use + − * / // %, parentheses, min(), max(), abs(), floor(), ceil() and round(). Limits cannot refer to other counters.</p></section>
+    <section class="card"><h2>Import & export</h2><label class="f"><span>One counter as JSON</span><textarea id="ct-json" class="mono" rows="6" placeholder='{"name":"Focus","max":"PROF","reset":"long"}'></textarea></label><div class="head-tools"><button type="button" class="ghost" id="ct-import">Load JSON</button><button type="button" class="ghost" id="ct-export">Export draft</button></div><p class="hint" style="margin:0">Loading JSON fills this form. Add or save it to write it to the selected character.</p></section></aside>`;
+  paintCounterPreview();
+  if (state.busy) box.querySelectorAll("input,select,textarea,button").forEach(e => e.disabled = true);
+}
+function paintCounterPreview() {
+  const p = COUNTER_EDITOR.preview;
+  if (!$("ct-preview-name")) return;
+  $("ct-preview-name").textContent = p?.name || COUNTER_EDITOR.draft?.name || "Your counter";
+  $("ct-preview-value").textContent = p ? p.preview.replace(/\*\*/g, "") : "";
+  $("ct-preview-note").textContent = p ? `${p.value} / ${p.max} · minimum ${p.min} · resets to ${p.reset_value}. ${p.desc || ""}` : "Check the counter to calculate its limits and appearance for this character.";
+}
+async function loadCharacterCounters() {
+  const state = COUNTER_EDITOR, pid = state.pid, seq = ++state.request;
+  if (!pid) return;
+  try {
+    const data = await api(counterPath(), {cache:"no-store"});
+    if (seq !== state.request || pid !== state.pid) return;
+    state.data = data; state.key = null; state.draft = null; state.preview = null; state.busy = false;
+    if (MODE === "counters") renderCounterArea();
+  } catch(e) { if (seq === state.request && MODE === "counters") counterError(e.message); }
+}
+async function checkCharacterCounter() {
+  const state = COUNTER_EDITOR, pid = state.pid, key = state.key;
+  try {
+    const body = characterCounterBody(), stamp = JSON.stringify(body);
+    if (key) body.key = key;
+    counterError(""); $("ct-check").disabled = true;
+    const p = await api(counterPath()+"/preview",{method:"POST",body:JSON.stringify(body)});
+    if (MODE !== "counters" || pid !== state.pid || key !== state.key || stamp !== JSON.stringify(characterCounterBody())) return;
+    state.preview = p; paintCounterPreview();
+  } catch(e) { if (MODE === "counters" && pid === state.pid) counterError(e.message); }
+  finally { if ($("ct-check")) $("ct-check").disabled = false; }
+}
+async function saveCharacterCounter(remove = false) {
+  const state = COUNTER_EDITOR;
+  if (state.busy || (remove && !state.key)) return;
+  if (remove && !state.confirm) { state.confirm = true; $("ct-delete").textContent = "Confirm delete"; return; }
+  const pid = state.pid, key = state.key;
+  let seq;
+  try {
+    const body = remove ? null : characterCounterBody();
+    seq = ++state.request;
+    state.busy = true; renderCounterArea();
+    const data = await api(counterPath()+(key ? "/"+encodeURIComponent(key) : ""), {method:remove ? "DELETE" : key ? "PATCH" : "POST", ...(body ? {body:JSON.stringify(body)} : {})});
+    if (pid !== state.pid || seq !== state.request) return;
+    state.data = data; state.confirm = false; state.preview = null;
+    const saved = data.counters.find(c=>c.key===data.saved);
+    state.preview = saved || null;
+    state.key = saved?.key || null; state.draft = saved ? {...blankCharacterCounter(), ...saved.definition, value:String(saved.value)} : null;
+    toast(data.message || "Saved.");
+  } catch(e) { if (pid === state.pid && (seq == null || seq === state.request)) { state.busy = false; renderCounterArea(); counterError(e.message); } }
+  finally { if (pid === state.pid && (seq == null || seq === state.request)) { state.busy = false; if (MODE === "counters" && state.data) { const error = $("ct-error")?.textContent; renderCounterArea(); counterError(error); } } }
+}
+document.addEventListener("click", ev => {
+  const b = ev.target.closest("button"); if (!b || !b.closest("#counter-area")) return;
+  const state = COUNTER_EDITOR;
+  if (state.busy) return;
+  if (b.id === "ct-characters") loadCharacters();
+  else if (b.id === "ct-reload") loadCharacterCounters();
+  else if (b.id === "ct-new") { state.key = null; state.draft = null; state.preview = null; state.confirm = false; renderCounterArea(); }
+  else if (b.dataset.ctEdit) { const c = state.data.counters.find(c=>c.key===b.dataset.ctEdit && c.editable); if(c) { state.key=c.key; state.draft={...blankCharacterCounter(),...c.definition,value:String(c.value)}; state.confirm=false; state.preview=c; renderCounterArea(); } }
+  else if (b.id === "ct-check") checkCharacterCounter();
+  else if (b.id === "ct-save") saveCharacterCounter();
+  else if (b.id === "ct-delete") saveCharacterCounter(true);
+  else if (b.id === "ct-export") { try { $("ct-json").value = JSON.stringify(characterCounterBody(),null,2); counterError(""); } catch(e) { counterError(e.message); } }
+  else if (b.id === "ct-import") {
+    try {
+      const raw=JSON.parse($("ct-json").value), d=raw.definition || raw;
+      if (!d || typeof d!=="object" || Array.isArray(d)) throw new Error("Paste one counter definition.");
+      const allowed=Object.keys(blankCharacterCounter()).filter(k=>k!=="value");
+      if (Object.keys(d).some(k=>!allowed.includes(k) && k!=="value") || allowed.some(k=>d[k]!=null && !["string","number"].includes(typeof d[k]))) throw new Error("Unknown or invalid counter fields.");
+      const value=raw.value ?? d.value ?? "";
+      if (value!=="" && !Number.isSafeInteger(Number(value))) throw new Error("The current value must be a whole number.");
+      state.draft={...blankCharacterCounter(),...Object.fromEntries(allowed.filter(k=>d[k]!=null).map(k=>[k,String(d[k])])),value:String(value)};
+      state.preview=null; state.confirm=false; renderCounterArea();
+    } catch(e) { counterError(e.message); }
+  }
+});
+document.addEventListener("change", ev => {
+  if (ev.target.id!=="ct-character") return;
+  if (COUNTER_EDITOR.busy) { ev.target.value=COUNTER_EDITOR.pid; return; }
+  Object.assign(COUNTER_EDITOR,{pid:ev.target.value,data:null,draft:null,key:null,preview:null,confirm:false});
+  renderCounterArea();
+});
+document.addEventListener("input", ev => {
+  const key=ev.target.dataset?.ctField;
+  if (!key || !COUNTER_EDITOR.draft) return;
+  COUNTER_EDITOR.draft[key]=ev.target.value; COUNTER_EDITOR.preview=null; COUNTER_EDITOR.confirm=false; counterError(""); paintCounterPreview();
+  if ($("ct-delete")) $("ct-delete").textContent="Delete counter";
+});
 function startLogin() {
   const state = Math.random().toString(36).slice(2) + Date.now().toString(36);
   try { sessionStorage.setItem("forge-oauth-state", state); } catch (e) {}
@@ -2378,6 +2531,7 @@ function renderAccount() {
   const box = $("account");
   $("save-bot").hidden = !(loginReady() && AUTH.user);
   $("tab-chars").hidden = !AUTH.user;
+  $("tab-counters").hidden = !AUTH.user;
   renderExisting();
   if (!AUTH.user) { MENU_OPEN = false; box.innerHTML = `<button type="button" class="discord" id="login-btn">Log in with Discord</button>`; return; }
   const initial = esc((AUTH.user.name || "?")[0].toUpperCase());
