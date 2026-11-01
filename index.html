@@ -99,6 +99,9 @@ button.discord:hover { filter: brightness(1.08); }
 .card-toggle svg { width: 14px; height: 14px; display: block; }
 .card-toggle:hover { color: var(--fg); }
 section.card.collapsed .card-toggle { transform: rotate(-90deg); }
+#fw-panel > summary { list-style: none; cursor: pointer; }
+#fw-panel > summary::-webkit-details-marker { display: none; }
+#fw-panel:not([open]) > summary .card-toggle { transform: rotate(-90deg); }
 section.card.collapsed > :not(.card-head) { display: none !important; }
 h2.has-toggle { display: flex; align-items: center; cursor: pointer; width: fit-content; }
 @media (prefers-reduced-motion: reduce) { .card-toggle { transition: none; } }
