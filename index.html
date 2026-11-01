@@ -585,6 +585,7 @@ const STATUS_ICON = {"Shin (心) - Fate": "0", "Shin (心) - Sora": "0", "Procur
 const ABIL = ["STR", "DEX", "CON", "INT", "WIS", "CHA"];
 const DTYPES = ["slashing", "piercing", "bludgeoning", "fire", "cold", "lightning", "thunder", "acid", "poison", "necrotic", "radiant", "psychic", "force", "erasure", "void"];
 const STATUSES = ["Bleed", "Burn", "Chill", "Frozen", "Rupture", "Sinking", "Tremor", "Poise", "Poisoned", "Paralyze", "Paralyzed", "Stunned", "Slowed", "Weakened", "Blessed", "Hasted", "Haste", "Shielded", "Raging", "Unlucky", "Fragile", "Vulnerable", "Protection", "Power Up", "Power Down", "Damage Up", "Damage Down", "Bind", "Bleed Vulnerability", "Deep Cuts", "Frightened", "Terrified", "Taunted", "Regenerating", "Sanctuary", "Unsteady", "Momentum", "Celestial Flames", "Soulburn", "White Flames", "Aqua Mark", "Sun Blessing", "Thunderstrike", "Dented Armor", "Dodging"];
+const STACKING = ["Fragile", "Protection", "Power Up", "Power Down", "Damage Up", "Damage Down", "Bind", "Severed Tendon", "Armor Plate"];
 const COUNTED = ["Bleed", "Burn", "Rupture", "Sinking", "Tremor", "Poise", "White Flames", "Soulburn"];
 const BEASTS = {wolf: "Wolf", black_bear: "Black Bear", giant_spider: "Giant Spider", brown_bear: "Brown Bear", giant_eagle: "Giant Eagle", elephant: "Elephant", tyrannosaurus: "Tyrannosaurus", acid_slime: "Acid Slime"};
 const RESERVED = ["add", "define", "del", "delete", "desc", "describe", "export", "import", "list", "remove", "rm"];
@@ -714,7 +715,7 @@ function normalize(s) {
 function newStep(type) {
   const s = {id: ++uid, type};
   for (const f of STEP_TYPES[type].fields) s[f.k] = f.def;
-  if (type === "effect") Object.assign(s, {mode: "status", name: "Bleed", potency: "2", count: "1", duration: null, to: "target"});
+  if (type === "effect") Object.assign(s, {mode: "status", name: "Bleed", potency: "2", count: "1", duration: null, stacks: "", to: "target"});
   if (GROUPS.includes(type)) s.children = [];
   return normalize(s);
 }
@@ -883,7 +884,7 @@ function effectHTML(s) {
     h += counted
       ? `<label class="f"><span>Stacks <em>potency</em></span><input type="text" class="dice" id="s${s.id}-potency" data-s="${s.id}" data-k="potency" value="${esc(s.potency)}"></label>
          <label class="f"><span>Count</span><input type="text" class="dice" id="s${s.id}-count" data-s="${s.id}" data-k="count" value="${esc(s.count)}"></label>`
-      : `<label class="f"><span>Rounds <em>empty = default</em></span><input type="number" id="s${s.id}-duration" data-s="${s.id}" data-k="duration" data-int="1" min="0" max="99" value="${s.duration ?? ""}"></label>`;
+      : (STACKING.includes(str(s.name)) ? `<label class="f"><span>Stacks <em>1-20</em></span><input type="number" id="s${s.id}-stacks" data-s="${s.id}" data-k="stacks" data-int="1" min="1" max="20" value="${s.stacks ?? ""}"></label>` : "") + `<label class="f"><span>Rounds <em>empty = default</em></span><input type="number" id="s${s.id}-duration" data-s="${s.id}" data-k="duration" data-int="1" min="0" max="99" value="${s.duration ?? ""}"></label>`;
     h += `</div>`;
   } else {
     const adv = k => `<label class="f"><span>${k === "attack_adv" ? "Its attacks" : "Attacks against it"}</span><select id="s${s.id}-c-${k}" data-s="${s.id}" data-c="${k}">${opt("", c[k], "Normal")}${opt("adv", c[k], "Advantage")}${opt("dis", c[k], "Disadvantage")}</select></label>`;
@@ -1085,6 +1086,7 @@ function stepOut(s, i) {
   if (s.type === "effect") {
     o.effect = effectOut(s);
     if (s.to === "self") o.to = "self";
+    if (s.mode === "status" && STACKING.includes(str(s.name)) && num(s.stacks) != null && num(s.stacks) !== 1) o.stacks = num(s.stacks);
     if (s.mode === "status" && !COUNTED.includes(str(s.name)) && num(s.duration) != null) o.duration = num(s.duration);
   } else {
     for (const f of STEP_TYPES[s.type].fields) {
@@ -1349,7 +1351,8 @@ function sayStep(s, who) {
     case "damage": return `${PRETTY(s.dice)}${s.damage_type ? " " + s.damage_type : ""}${s.alt_type ? "/" + s.alt_type : ""} damage` + ({half: ", half on a save", none: ", none on a save"}[s.save] || "")
       + (s.stack_pct ? `, +${s.stack_pct.per}% per ${s.stack_pct.every > 1 ? s.stack_pct.every + " " : ""}${s.stack_pct.effect}${s.stack_pct.max ? ` (max +${s.stack_pct.max}%)` : ""}` : "") + (s.stack_bonus ? `, +${s.stack_bonus.per} per ${s.stack_bonus.effect} stack` : "");
     case "heal": return s.percent_damage ? `${on === "you" ? "you heal" : on + " heals"} ${s.percent_damage}% of the damage` : `${on === "you" ? "you heal" : on + " heals"} ${PRETTY(s.dice)} HP`;
-    case "effect": { const e = s.effect, n = typeof e === "string" ? e : e.name; const nums = typeof e === "object" && (e.potency || e.count) ? ` (${[e.potency != null ? e.potency + " stacks" : "", e.count != null ? "Count " + e.count : ""].filter(Boolean).join(", ")})` : (s.duration != null ? ` for ${s.duration} rounds` : (typeof e === "object" && e.duration ? ` for ${e.duration} rounds` : "")); return `${on} ${on === "you" ? "get" : "gets"} ${n || "an effect"}${nums}`; }
+    case "effect": { const e = s.effect, n = typeof e === "string" ? e : e.name; const stackText = typeof e === "string" && s.stacks && STACKING.includes(e) ? ` ×${s.stacks}` : "";
+    const nums = typeof e === "object" && (e.potency || e.count) ? ` (${[e.potency != null ? e.potency + " stacks" : "", e.count != null ? "Count " + e.count : ""].filter(Boolean).join(", ")})` : (s.duration != null ? ` for ${s.duration} rounds` : (typeof e === "object" && e.duration ? ` for ${e.duration} rounds` : "")); return `${on} ${on === "you" ? "get" : "gets"} ${n || "an effect"}${stackText}${nums}`; }
     case "remove": return `removes ${s.effect === "*" ? "every" + (s.kind ? " " + s.kind : " effect") : s.effect} from ${on}`;
     case "text": return `"${s.text}"`;
     case "counter": return `${s.op} ${s.op === "reset" ? "" : (s.amount ?? 1) + " "}${s.counter}`;
@@ -1507,10 +1510,10 @@ function stepsFrom(list, skipped) {
       if (!raw || !STEP_TYPES[raw.type]) { skipped.push(raw && raw.type); continue; }
       const s = newStep(raw.type), used = new Set(["type", ...COND_KEYS]);
     if (raw.type === "effect") {
-      ["effect", "to", "duration"].forEach(k => used.add(k));
+      ["effect", "to", "duration", "stacks"].forEach(k => used.add(k));
       s.to = raw.to === "self" ? "self" : "target";
       const e = raw.effect;
-      if (typeof e === "string") { s.mode = "status"; s.name = e; s.duration = raw.duration ?? null; }
+      if (typeof e === "string") { s.mode = "status"; s.name = e; s.duration = raw.duration ?? null; s.stacks = raw.stacks != null ? String(raw.stacks) : ""; }
       else if (e && COUNTED.includes(e.name) && Object.keys(e).every(k => ["name", "kind", "potency", "count", "description"].includes(k))) { s.mode = "status"; s.name = e.name; s.potency = String(e.potency ?? ""); s.count = String(e.count ?? ""); }
       else if (e) {
         s.mode = "custom";
@@ -1920,7 +1923,7 @@ const RARITIES = ["common", "uncommon", "rare", "very rare", "legendary", "mythi
 const ACC_KINDS = ["ring", "amulet", "charm", "cloak", "boots", "bracers", "circlet", "belt", "gloves", "hat", "helm", "brooch", "necklace", "goggles", "accessory"];
 const BLANK_CLASS = () => ({name: "", description: "", hit_die: 8, cast_stat: "", progression: "full", features: [], counters: [], actions: []});
 const BLANK_ITEM = () => ({name: "", description: "", image: "", thumbnail: "", rarity: "common", slot: "weapon", sub_kind: "shield", damage: "1d8", damage_type: "slashing", plus: 0, finesse: false, light: false, two_handed: false, ranged: false,
-  ac: "", dex: "full", kind: "ring", bonus: {}, requires: {}, passives: [], actions: []});
+  ac: "", dex: "full", kind: "ring", bonus: {}, requires: {}, attack: null, passives: [], actions: []});
 const CLASS_EXAMPLES = [{label: "Blood Knight", blurb: "A half-casting warrior with a passive heal, a counter and a level 2 action.", json: {type: "class", name: "Blood Knight", description: "A warrior who feeds on wounds.", hit_die: 10, casting: {stat: "CHA", progression: "half"},
   features: [{name: "Crimson Hide", level: 1, text: "+1 AC and +10 HP.", bonus: {ac: 1, hp: 10}}, {name: "Thirst", level: 3, text: "Heals 1d6 when it hits, once per round.", passive: {name: "Thirst", passive: true, triggers: [{when: "attack_hit", max_per_round: 1}], steps: [{type: "heal", dice: "1d6", to: "self"}]}}, {name: "Red Fury", level: 6, text: "+2 damage.", bonus: {damage: 2}}],
   counters: [{name: "Blood Points", level: 1, max: "PROF", reset: "long", description: "Spent on Blood Burst."}],
@@ -1956,6 +1959,14 @@ function fixItemExtras(item) {
   for (const k of Object.keys(item)) if (/^\d+$/.test(k)) delete item[k];
   return item;
 }
+function attackRowHTML() {
+  const a = IT.attack;
+  return `<div class="linked"><span class="tag">attack</span>${a ? `<b>${esc(str(IT.name) || "Main attack")}</b>` : `<span class="hint">the normal attack</span>`}
+    <button type="button" class="tiny" data-link="attack" data-link-label="the ${esc(str(IT.name) || "weapon")} main attack" data-link-passive="0">${a ? "Edit" : "Build the main attack"} in the action creator</button>
+    ${a ? `<button type="button" class="tiny ghost" data-unlink="attack">Use the normal attack</button>` : ""}</div>
+    ${a ? eText("attack.info", "Description shown on the item", {hint: "optional", max: 300}) + `<p class="hint" style="margin:0">It replaces the normal attack. The weapon's plus and your gear bonuses are added to it.</p>` : ""}`;
+}
+const attackTemplate = () => { const ability = IT.finesse ? "DEX" : "STR"; return {name: str(IT.name) || "Weapon", steps: [{type: "attack", ability}, {type: "damage", dice: `${str(IT.damage) || "1d8"}+${ability}`, damage_type: str(IT.damage_type).toLowerCase() || "slashing"}]}; };
 function extrasHTML(key, label, passive) {
   fixItemExtras(IT);
   const list = IT[key];
@@ -1999,7 +2010,7 @@ function renderItemForm() {
   if (it.slot === "accessory") h += `<div class="row">${eSel("kind", "Kind", ACC_KINDS.map(k => [k, k[0].toUpperCase() + k.slice(1)]))}</div>`;
   h += `<details class="cond" ${Object.values(it.bonus || {}).some(v => v) ? "open" : ""}><summary>Bonuses while worn</summary>${bonusGrid("bonus", ITEM_BONUS)}</details>
     <details class="cond" ${Object.values(it.requires || {}).some(v => v) ? "open" : ""}><summary>Stat requirements</summary><div class="bonus-grid">${ABIL.map(a => eNum(`requires.${a}`, a + " at least", {min: 1, max: 30})).join("")}</div></details>
-    <div class="sub-h">Extras</div>${extrasHTML("passives", `the ${it.name || "item"} passive`, true)}${extrasHTML("actions", `the ${it.name || "item"} action`, false)}
+    <div class="sub-h">Extras</div>${weaponish ? attackRowHTML() : ""}${extrasHTML("passives", `the ${it.name || "item"} passive`, true)}${extrasHTML("actions", `the ${it.name || "item"} action`, false)}
     <p class="hint" style="margin:0">A passive runs by itself. An action is an extra move, used with <code class="inl">$action</code>. Up to 6 of each.</p>`;
   $("item-form").innerHTML = h;
 }
@@ -2033,6 +2044,7 @@ function buildItem() {
   const r = bonusOut(it.requires); if (Object.keys(r).length) o.requires = r;
   const noEmptyInfo = a => { if (!a || str(a.info)) return a; const copy = Object.assign({}, a); delete copy.info; return copy; };
   const passives = (it.passives || []).filter(Boolean).map(noEmptyInfo), actions = (it.actions || []).filter(Boolean).map(noEmptyInfo);
+  if (weaponish && it.attack) o.attack = noEmptyInfo(it.attack);
   if (passives.length === 1) o.passive = passives[0]; else if (passives.length) o.passives = passives;
   if (actions.length === 1) o.action = actions[0]; else if (actions.length) o.actions = actions;
   return o;
@@ -2084,6 +2096,7 @@ function itemLines(o) {
     speed: n => `${signedNum(n)} ft speed`, attack: n => `${signedNum(n)} to hit`, damage: n => `${signedNum(n)} damage`, mana: n => `${signedNum(n)} max mana`, ac: n => `${signedNum(n)} AC`}[k] || (n => `${signedNum(n)} ${k.replace("_", " ")}`))(v));
   lines.push("**Provides**: " + (bits.join(", ") || (passives.length ? "a passive effect (below)" : "nothing special")));
   if (o.slot === "weapon") lines.push("**Held as**: main weapon" + (o.light ? " or off-hand" : "") + (o.two_handed ? " (takes both hands: empties the sub-weapon slot)" : ""));
+  if (o.attack) lines.push("**Attack**: " + (str(o.attack.info) || str(o.attack.description) || "a custom attack. Use it with `$action " + (o.name || "weapon") + "`."));
   if (o.requires && Object.keys(o.requires).length) lines.push("**Needs**: " + Object.entries(o.requires).map(([k, v]) => `${k} ${v}`).join(", "));
   passives.forEach(x => lines.push(`**Passive — ${x.name || "passive"}**: ${str(x.info) || autoPassiveText(x)}`));
   actions.forEach(x => lines.push(`**Action — ${x.name || "action"}**: ${str(x.info) || str(x.description) || `use it with \`$action ${x.name || "action"}\`.`}`));
@@ -2145,7 +2158,7 @@ function entityFrom(d) {
   }
   const it = BLANK_ITEM();
   Object.assign(it, {name: d.name || "", description: d.description || "", image: d.image || "", thumbnail: d.thumbnail || "", rarity: d.rarity || "common", slot: d.slot || "weapon", bonus: Object.assign({}, d.bonus || {}), requires: Object.assign({}, d.requires || {}),
-    passives: [...(d.passive ? [d.passive] : []), ...(Array.isArray(d.passives) ? d.passives : [])], actions: [...(d.action ? [d.action] : []), ...(Array.isArray(d.actions) ? d.actions : [])], kind: d.kind || "ring", dex: d.dex || "full"});
+    attack: d.attack || null, passives: [...(d.passive ? [d.passive] : []), ...(Array.isArray(d.passives) ? d.passives : [])], actions: [...(d.action ? [d.action] : []), ...(Array.isArray(d.actions) ? d.actions : [])], kind: d.kind || "ring", dex: d.dex || "full"});
   if (d.damage) Object.assign(it, {damage: d.damage, damage_type: d.damage_type || "slashing", plus: d.plus || 0, finesse: !!d.finesse, light: !!d.light, two_handed: !!d.two_handed, ranged: !!d.ranged, sub_kind: "weapon"});
   else if (d.slot === "subweapon") it.sub_kind = "shield";
   if (d.ac != null) it.ac = d.ac;
@@ -2187,7 +2200,7 @@ function openLink(path, label, passive) {
   const target = entity(), existing = getPath(target, path);
   LINK = {mode: MODE, path, label, passive, owner: str(target.name)};
   ACTION_STASH = JSON.stringify(S);
-  const start = existing ? JSON.parse(JSON.stringify(existing)) : passive
+  const start = existing ? JSON.parse(JSON.stringify(existing)) : path === "attack" ? attackTemplate() : passive
     ? {name: label.replace(/^the /, "").replace(/ passive$/, "") || "Passive", passive: true, triggers: [{when: "attack_hit", max_per_round: 1}], steps: [{type: "damage", dice: "1d6"}]}
     : {name: "New action", steps: [{type: "attack", ability: "STR"}, {type: "damage", dice: "1d8+STR"}]};
   S = fromData(start).st;
@@ -2199,6 +2212,8 @@ function closeLink(attach) {
     const a = buildAction(), {errs} = check(a);
     if (errs.length) { toast("Fix the problems listed on the right first."); return; }
     if (LINK.passive && !(a.triggers || []).length) { toast("A passive needs a trigger in “Runs by itself”."); return; }
+    if (LINK.path === "attack" && (a.passive || (a.triggers || []).length)) { toast("A main attack can't run by itself. Use a passive for that."); return; }
+    if (LINK.path === "attack") a.name = str(IT.name) || a.name;
     const owner = LINK.mode === "class" ? CL : IT;
     setPath(owner, LINK.path, a);
   }
