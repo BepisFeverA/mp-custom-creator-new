@@ -334,6 +334,12 @@ button:disabled { opacity: .38; }
 .chars-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
 .char { position: relative; aspect-ratio: 5 / 6; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); isolation: isolate; }
 .char-art { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: hsl(var(--h) 26% 28%) center / cover no-repeat; }
+.md-code { font-family: var(--mono); font-size: .85em; background: rgb(0 0 0 / .3); padding: 1px 4px; border-radius: 3px; }
+.md-pre { display: block; margin: 4px 0; padding: 6px 8px; background: rgb(0 0 0 / .3); border-radius: 4px; font-family: var(--mono); font-size: 12.5px; white-space: pre-wrap; }
+.md-h1, .md-h2, .md-h3 { display: block; font-weight: 700; }
+.md-h1 { font-size: 1.4em; } .md-h2 { font-size: 1.2em; } .md-h3 { font-size: 1.05em; }
+.md-sub { display: block; font-size: .8em; color: var(--embed-muted); }
+.md-quote { display: block; border-left: 3px solid #4e5058; padding-left: 8px; }
 .char-add { aspect-ratio: 5 / 6; border-radius: 8px; border: 2px dashed var(--field); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: var(--muted); font-weight: 500; cursor: pointer; }
 .char-add:hover, .char-add:focus-visible { border-color: var(--accent); color: var(--fg); outline: none; }
 .char-add-plus { font-size: 44px; line-height: 1; font-weight: 300; }
@@ -606,6 +612,23 @@ function iconKey(name) {
 }
 const icon = name => { const k = iconKey(name); return k == null ? "" : `<img class="ico" src="${ICON_IMG[k]}" alt="">`; };
 const NAME_RE = new RegExp(`\\{status:\\s*([^{}]+?)\\s*\\}|(?<![\\w-])(${ICON_NAMES.map(n => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})(?![\\w-])`, "g");
+function md(h) {
+  const keep = [];
+  const stash = html => `\u0000${keep.push(html) - 1}\u0000`;
+  h = h.replace(/```(?:[a-z]+\n)?([\s\S]*?)```/g, (_, c) => stash(`<pre class="md-pre">${c.replace(/^\n|\n$/g, "")}</pre>`));
+  h = h.replace(/`([^`\n]+)`/g, (_, c) => stash(`<code class="md-code">${c}</code>`));
+  h = h.replace(/^(#{1,3}) (.+)$/gm, (_, hs, t) => `<span class="md-h${hs.length}">${t}</span>`);
+  h = h.replace(/^-# (.+)$/gm, '<span class="md-sub">$1</span>');
+  h = h.replace(/^&gt; (.+)$/gm, '<span class="md-quote">$1</span>');
+  h = h.replace(/(<span class="md-(?:h\d|sub|quote)">[^\n]*?<\/span>)\n/g, "$1");
+  h = h.replace(/\*\*\*(?=\S)([\s\S]*?\S)\*\*\*/g, "<b><i>$1</i></b>");
+  h = h.replace(/\*\*(?=\S)([\s\S]*?\S)\*\*/g, "<b>$1</b>");
+  h = h.replace(/__(?=\S)([\s\S]*?\S)__/g, "<u>$1</u>");
+  h = h.replace(/~~(?=\S)([\s\S]*?\S)~~/g, "<s>$1</s>");
+  h = h.replace(/\*(?=[^\s*])([^*\n]*?[^\s*])\*/g, "<i>$1</i>");
+  h = h.replace(/(^|[^\w])_(?=[^\s_])([^_\n]*?[^\s_])_(?!\w)/g, "$1<i>$2</i>");
+  return h.replace(/\u0000(\d+)\u0000/g, (_, i) => keep[Number(i)]);
+}
 function decorate(html, mode) {
   return html.replace(NAME_RE, (whole, tag, plain) => {
     const name = tag != null ? statusName(tag) : plain;
@@ -1309,7 +1332,10 @@ function renderPreview(full) {
   const look = Object.assign({}, (a.looks || []).find(shows) || {});
   for (const s of withAutoWhen(a.steps).filter(s => s.type === "look" && shows(s))) for (const k of LOOK_OUT) if (s[k]) look[k] = s[k];
   const A = Object.assign({}, a, look);
-  const fill = (t, mode) => decorate(esc(t).replace(/\{name\}/g, () => esc(me)).replace(/\{target\}|\{targets\}/g, who).replace(/\{action\}/g, esc(a.name || "Action")), mode || "link");
+  const fill = (t, mode) => {
+    const text = esc(t).replace(/\{name\}/g, () => esc(me)).replace(/\{target\}|\{targets\}/g, who).replace(/\{action\}/g, esc(a.name || "Action"));
+    return decorate(mode === "md" ? md(text) : text, mode === "md" ? "link" : mode || "link");
+  };
   const title = A.title ? fill(A.title, "title") : esc(a.steps.some(s => s.type === "attack") ? `${me} attacks with ${/^[aeiou]/i.test(a.name || "") ? "an" : "a"} ${a.name || "…"}!` : `${me} uses ${a.name || "…"}!`);
   const lines = withAutoWhen(a.steps).filter(s => s.type !== "look").map(s => {
     if (s.type === "attack") return `<div><b>To Hit</b>: 1d20 + ${s.ability}${s.proficient === false ? "" : " + PROF"}${s.bonus ? (s.bonus > 0 ? " + " : " − ") + Math.abs(s.bonus) : ""}${outcome === "crit" ? " — <b>CRIT!</b>" : ""}</div>`;
@@ -1325,7 +1351,7 @@ function renderPreview(full) {
   $("embed").style.setProperty("--embed-strip", color);
   $("embed").innerHTML = `<div style="min-width:0"><div class="author"><i${mePic ? ` style="background-image:url('${esc(mePic)}')"` : ""}></i>${esc(me)}</div><div class="title">${title}</div>
     ${lines.length ? `<div class="ftitle">Meta</div><div class="meta">${decorate(lines.join(""), "link")}</div>` : ""}
-    ${A.description ? `<div class="ftitle">Effect</div><div class="ftext">${fill(A.description)}</div>` : ""}${(a.fields || []).map(f => `<div class="ftitle">${fill(f.name, "title")}</div><div class="ftext">${fill(f.value)}</div>`).join("")}
+    ${A.description ? `<div class="ftitle">Effect</div><div class="ftext">${fill(A.description, "md")}</div>` : ""}${(a.fields || []).map(f => `<div class="ftitle">${fill(f.name, "title")}</div><div class="ftext">${fill(f.value, "md")}</div>`).join("")}
     <div class="sub">${result}</div></div>${thumbSrc === "none" ? "" : thumb}
     ${imgSrc && /^(https?|blob):/.test(imgSrc) ? `<img class="big pv-img" data-kind="image" src="${esc(imgSrc)}" alt="Action image preview">` : ""}
     <div class="foot">${A.footer ? fill(A.footer, "plain") + " • " : ""}Midnight\\Protocol • Action</div>`;
@@ -1911,7 +1937,7 @@ function entityPreview(o) {
   const lines = [];
   if (MODE === "class") {
     lines.push(`<div><b>Hit Die</b>: d${o.hit_die} • ${o.casting ? `${o.casting.progression === "full" ? "Full" : "Half"} caster (${o.casting.stat})` : "Martial (no spells)"}</div>`);
-    (o.features || []).slice().sort((a, b) => a.level - b.level).forEach(f => lines.push(`<div><b>Level ${f.level}: ${esc(f.name)}</b> — ${esc(f.text || "")}${f.passive ? " <i>(passive)</i>" : ""}</div>`));
+    (o.features || []).slice().sort((a, b) => a.level - b.level).forEach(f => lines.push(`<div><b>Level ${f.level}: ${esc(f.name)}</b> — ${md(esc(f.text || ""))}${f.passive ? " <i>(passive)</i>" : ""}</div>`));
     (o.counters || []).forEach(c => lines.push(`<div>Counter: <b>${esc(c.name)}</b> (max ${esc(c.max)}, from level ${c.level})</div>`));
     (o.actions || []).forEach(a => lines.push(`<div>Level ${a.level} action: <b>${esc(a.action.name || "action")}</b></div>`));
   } else {
@@ -1926,7 +1952,7 @@ function entityPreview(o) {
   }
   $("embed").style.setProperty("--embed-strip", MODE === "class" ? "#7b4bb3" : "#c2410c");
   $("embed").innerHTML = `<div style="min-width:0"><div class="author"><i></i>Your Character</div><div class="title">${esc(o.name || (MODE === "class" ? "Unnamed class" : "Unnamed item"))}</div>
-    <div class="meta" style="margin-top:6px">${decorate(lines.join(""), "link")}</div>${o.description ? `<div class="ftitle">Description</div><div class="ftext">${esc(o.description)}</div>` : ""}</div>
+    <div class="meta" style="margin-top:6px">${decorate(lines.join(""), "link")}</div>${o.description ? `<div class="ftitle">Description</div><div class="ftext">${md(esc(o.description)).replace(STATUS_TAG_RE, (_, n) => { const name = statusName(n); return `${icon(name)}<span class="st-link">${esc(name)}</span>`; })}</div>` : ""}</div>
     <div class="foot">Midnight\\Protocol • Custom ${MODE === "class" ? "Class" : "Item"}</div>`;
 }
 function updateEntity() {
@@ -2748,6 +2774,7 @@ function acKind(el) {
   const d = el.dataset;
   if (d.w === "target_stat" || (d.b || "").endsWith("target_stat")) return "stat";
   if (d.w === "counter_is" || (d.b || "").endsWith("counter_is")) return "counter";
+  if (["min", "max", "reset_to"].includes(d.ctField)) return "formula";
   if (d.s && ["dice", "dc", "amount"].includes(d.k)) return d.k;
   if (d.acList || el.getAttribute("list")) return "list";
   return "text";
@@ -2794,6 +2821,18 @@ function suggest(el, force) {
   if (kind === "counter") {
     if (/[<>=!]/.test(before) || !/[A-Za-z0-9_\]]$/.test(before)) return null;
     return {items: OP_ITEMS, from: pos, to: pos, q: ""};
+  }
+  if (kind === "formula") {
+    const given = (typeof COUNTER_EDITOR !== "undefined" && COUNTER_EDITOR.data && COUNTER_EDITOR.data.variables) || {};
+    const note = (k, v) => k === "PROF" ? `proficiency bonus${v == null ? "" : ` (${v})`}` : k === "LEVEL" ? `your level${v == null ? "" : ` (${v})`}` : k === "CAST" ? `spellcasting modifier${v == null ? "" : ` (${v})`}` : `your ${k} modifier${v == null ? "" : ` (${v})`}`;
+    const vars = OWN_VARS.map(o => ({label: o.label, insert: o.insert, detail: note(o.label, given[o.label]), badge: "v", mono: true}));
+    const keywords = el.dataset.ctField === "reset_to" ? [{label: "max", insert: "max", detail: "the counter's maximum", badge: "k", mono: true}, {label: "min", insert: "min", detail: "the counter's minimum", badge: "k", mono: true}] : [];
+    const funcs = [["min(", "the smaller of two values"], ["max(", "the larger of two values"], ["abs(", "remove the minus sign"], ["floor(", "round down"], ["ceil(", "round up"], ["round(", "round to the nearest whole number"]].map(([label, detail]) => ({label, insert: label, detail, badge: "f", mono: true}));
+    const word = /[A-Za-z0-9_]*$/.exec(before)[0];
+    if (!word && !force && before.trim() !== "" && !/[+\-*\/%(,]\s*$/.test(before)) return null;
+    const shown = pickMatches([...vars, ...keywords, ...funcs], word).slice(0, 40);
+    if (shown.length === 1 && shown[0].label.toLowerCase() === word.toLowerCase()) return null;
+    return {items: shown, from: pos - word.length, to: pos, q: word};
   }
   const token = /[A-Za-z0-9_.@{]*$/.exec(before)[0];
   if (!token && !force && before.trim() !== "" && !/[+\-]\s*$/.test(before)) return null;
@@ -2864,7 +2903,7 @@ document.addEventListener("focusin", ev => {
   const el = ev.target, kind = acKind(el);
   if (!kind) return;
   if (el.hasAttribute("list")) { el.dataset.acList = el.getAttribute("list"); el.removeAttribute("list"); }
-  if (kind === "list" || ((kind === "dice") && !el.value)) acRefresh(el, true);
+  if (kind === "list" || ((kind === "dice" || kind === "formula") && !el.value)) acRefresh(el, true);
 });
 document.addEventListener("focusout", () => setTimeout(() => { if (!acBox.contains(document.activeElement) && document.activeElement !== AC.el) acClose(); }, 0));
 document.addEventListener("keydown", ev => {
