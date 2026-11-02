@@ -13,6 +13,7 @@
     attack:{ability:"STR"}, save:{ability:"DEX",dc:"auto"}, damage:{dice:"1d8+STR",damage_type:"slashing",roll:"each"},
     heal:{dice:"1d8",to:"target"}, effect:{effect:{name:"New effect",kind:"buff",duration:1,timing:"target_end",stacking:"refresh"},to:"target"},
     remove:{effect:"New effect",from:"target"}, counter:{counter:"Focus",op:"gain",amount:"1"},
+    sweep:{amount:1,steps:[]}, ricochet:{amount:1,steps:[]},
     grant:{actions:1,bonus_actions:0}, summon:{beast:"wolf"}, burst:{effect:"Tremor"},text:{text:"Describe the result."},look:{title:""}
   };
   const extraFields = {
@@ -33,6 +34,7 @@
     const walk=(nodes,conditions=[],depth=0)=>{
       if(depth>8)return;
       for(const n of nodes||[]) {
+        if(["sweep","ricochet"].includes(n.type)) {steps.push({type:n.type,amount:n.amount,when:"always",_ifc:conditions});walk(n.steps,[...conditions,`${n.type}: +${n.amount??1} extra random enemies`],depth+1);continue;}
         if(n.type==="target") {walk(n.steps,conditions,depth+1);continue;}
         if(n.type==="repeat") {walk(n.steps,[...conditions,`repeats ${n.times||1} times`],depth+1);continue;}
         if(n.type==="if") {walk(n.steps,[...conditions,"if "+conditionText(n.condition??n)],depth+1);walk(n.else,[...conditions,"otherwise"],depth+1);continue;}
@@ -112,7 +114,7 @@
   function withIds(rows) {return (rows||[]).map(n=>{n=clone(n);n.id=n.id||uid();for(const k of ["steps","else","success","failure"])if(n[k])n[k]=withIds(n[k]);for(const c of [...(n.choices||[]),...(n.table||[])])c.steps=withIds(c.steps);return n;});}
   function normalizeLegacy(rows){
     const out=withIds(rows),flat=[];traverse(out,n=>{if(n.type!=="if")flat.push(n);});
-    traverse(out,n=>{if(n.of){n.of_id=flat[n.of-1]?.id;delete n.of;}if(n.type==="if"&&!n.condition){n.condition={};for(const k of ["when","target_has","target_missing","self_has","self_missing","counter_is","target_stacks","target_stat"])if(n[k]!=null){n.condition[k]=n[k];delete n[k];}}});return out;
+    traverse(out,n=>{if(n.of){n.of_id=flat[n.of-1]?.id;delete n.of;}if(["if","sweep","ricochet"].includes(n.type)&&!n.condition){n.condition={};for(const k of ["when","target_has","target_missing","self_has","self_missing","counter_is","target_stacks","target_stat"])if(n[k]!=null){n.condition[k]=n[k];delete n[k];}}});return out;
   }
   buildAction = function(){S.extra.id ||= uid();const a=oldBuild();if(a.templates)for(const id of Object.keys(a.templates)){const t=templates.find(t=>t.id===id);if(t)a.templates[id]=clone(t.data);}if(Array.isArray(S.extra.program)){a.program=clone(S.extra.program);delete a.steps;}return a;};
   buildClass = function(){CL.forge_id ||= uid();const o=oldClass();if(CL.counters?.length)o.counters=CL.counters.map(c=>({...originalEntityCounter(c),level:Number(c.level)||1}));if(CL.forge_id)o.id=CL.forge_id;return o;};

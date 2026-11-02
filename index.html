@@ -602,7 +602,7 @@ const COUNTED = ["Bleed", "Burn", "Rupture", "Sinking", "Tremor", "Poise", "Whit
 const BEASTS = {wolf: "Wolf", black_bear: "Black Bear", giant_spider: "Giant Spider", brown_bear: "Brown Bear", giant_eagle: "Giant Eagle", elephant: "Elephant", tyrannosaurus: "Tyrannosaurus", acid_slime: "Acid Slime"};
 const RESERVED = ["add", "define", "del", "delete", "desc", "describe", "export", "import", "list", "remove", "rm"];
 const MAX_STEPS = 12, MAX_VARIANTS = 8, MAX_LOOKS = 6, MAX_TRIGGERS = 4, MAX_USES = 3;
-const GROUPS = ["attack", "save", "if", "else"];
+const GROUPS = ["attack", "save", "if", "else", "sweep", "ricochet"];
 const ROLLS = ["attack", "save"];
 const isCtl = type => type === "if" || type === "else";
 const canHold = (container, node) => !isCtl(container.type) || !GROUPS.includes(node.type);
@@ -693,6 +693,10 @@ const STEP_TYPES = {
     {k: "counter", label: "Counter name", type: "text", def: "Ki", req: true},
     {k: "op", label: "Do", type: "select", options: ["spend", "gain", "set", "reset"], def: "spend"},
     {k: "amount", label: "Amount", type: "text", def: "1", mono: true}]},
+  sweep: {label: "Sweep", blurb: "Runs its steps on your targets and extra random enemies", fields: [
+    {k: "amount", label: "Extra targets / expression", type: "text", def: "1", req: true, mono: true, hint: '0–20, PROF, or roll("1d3"). Applies only to steps inside.'}]},
+  ricochet: {label: "Ricochet", blurb: "Runs its steps on your targets and extra random enemies", fields: [
+    {k: "amount", label: "Extra targets / expression", type: "text", def: "1", req: true, mono: true, hint: '0–20, PROF, or roll("1d3"). Applies only to steps inside.'}]},
   grant: {label: "Extra action", blurb: "Gives actions back", fields: [
     {k: "actions", label: "Actions", type: "int", min: 0, max: 3, def: 1},
     {k: "bonus_actions", label: "Bonus actions", type: "int", min: 0, max: 3, def: 0}]},
@@ -709,7 +713,7 @@ const STEP_TYPES = {
   else: {label: "Otherwise", blurb: "Runs when the If above is false", fields: []},
 };
 const OMIT_DEFAULT = new Set(["bonus", "crit_range", "proficient", "always_hit", "always_crit", "dc", "damage_type", "alt_type", "save", "crit", "to", "from", "kind"]);
-const ADD_ORDER = ["attack", "save", "variable", "if", "damage", "effect", "heal", "remove", "text", "look", "counter", "grant", "summon", "burst"];
+const ADD_ORDER = ["attack", "save", "sweep", "ricochet", "variable", "if", "damage", "effect", "heal", "remove", "text", "look", "counter", "grant", "summon", "burst"];
 const LEAVES = ADD_ORDER.filter(t => !GROUPS.includes(t));
 const COND_KEYS = ["when", "chance", "per_round", "target_has", "target_missing", "self_has", "self_missing", "target_stacks", "target_stat", "consumed", "counter_is"];
 const EFFECT_FIELDS = ["name", "kind", "duration", "description", "ac", "speed", "attack", "damage", "save", "taken", "dealt", "tick", "potency", "count", "bleed_bonus_chance", "burn", "pierce", "crit_less", "hit_pct", "status", "taken_ranged", "regen", "attack_adv", "defense_adv", "skip_turn"];
@@ -769,6 +773,7 @@ function botIdx(F, i) { return F.slice(0, i).filter(f => !isCtl(f.node.type)).le
 function groupAncestor(F, i) {
   let p = F[i].parent;
   while (p) {
+    if (["sweep", "ricochet"].includes(p.type)) return -1;
     if (ROLLS.includes(p.type)) return F.findIndex(x => x.node === p);
     const at = F.find(x => x.node === p); p = at ? at.parent : null;
   }
@@ -779,7 +784,7 @@ function botAuto(i) { const F = flat(), s = F[i].node, before = F.slice(0, i).ma
 
 function ofFor(i) {
   const F = flat(), f = F[i];
-  if (!f || !f.parent || isCtl(f.parent.type)) return null;
+  if (!f || !f.parent || isCtl(f.parent.type) || ["sweep", "ricochet"].includes(f.parent.type)) return null;
   const p = F.findIndex(x => x.node === f.parent);
   if (ROLLS.includes(f.node.type)) return botIdx(F, p);
   for (let j = i - 1; j > p; j--) if (ROLLS.includes(F[j].node.type)) return botIdx(F, p);
@@ -789,7 +794,7 @@ function groupFlat(nodes) {
   const out = [], open = [], byRaw = new Map(nodes.map(n => [n._raw, n]));
   for (const n of nodes) {
     const ctl = isCtl(n.type), isGroup = ROLLS.includes(n.type), w = n.cond.when, g = open[open.length - 1];
-    if (!ctl) { if (isGroup) n.children = []; else delete n.children; }
+    if (!ctl) { if (isGroup) n.children = []; else if (!["sweep", "ricochet"].includes(n.type)) delete n.children; }
     let parent = null;
     const tied = n._of != null ? byRaw.get(n._of) : null;
     if (tied && ROLLS.includes(tied.type) && tied !== n) parent = tied;
@@ -955,8 +960,10 @@ function condHTML(s, i) {
       <label class="f"><span>…this many stacks</span><input type="number" id="s${s.id}-w-stacks_min" data-s="${s.id}" data-w="stacks_min" min="1" max="99" value="${esc(c.stacks_min)}"></label>
       ${!isIf && (spent || c.consumed) ? `<label class="chk"><input type="checkbox" id="s${s.id}-w-consumed" data-s="${s.id}" data-w="consumed" ${c.consumed ? "checked" : ""}> Only if the status was spent for a crit</label>` : ""}</div></details>`;
 }
-const BADGE = {variable: "VAR", if: "IF", else: "ELSE", attack: "ATK", save: "SAVE", damage: "DMG", heal: "HEAL", effect: "FX", remove: "DEL", text: "TXT", counter: "CTR", grant: "ACT", summon: "SUM", burst: "BST", look: "LOOK"};
+const BADGE = {sweep: "SWP", ricochet: "RCH", variable: "VAR", if: "IF", else: "ELSE", attack: "ATK", save: "SAVE", damage: "DMG", heal: "HEAL", effect: "FX", remove: "DEL", text: "TXT", counter: "CTR", grant: "ACT", summon: "SUM", burst: "BST", look: "LOOK"};
 const LONG = {
+  sweep: "Put the attack, damage and effects this Sweep applies to inside this block. Adds random living enemies to the current targets, once per block. Amount accepts a number, variable or roll() expression (clamped to 0–20). Other steps keep their own targets.",
+  ricochet: "Put the attack, damage and effects this Ricochet applies to inside this block. Adds random living enemies to the current targets, once per block. Amount accepts a number, variable or roll() expression (clamped to 0–20). Other steps keep their own targets.",
   variable: "Saves a numeric result for later steps in this action. Use {name} to reuse it; roll(\"1d6\") saves the total of a dice roll.",
   attack: "Rolls to hit. Steps inside it only happen on a hit.",
   save: "The target rolls a save. Steps inside it follow the result.",
@@ -1113,7 +1120,7 @@ function stepOut(s, i) {
       let v = s[f.k];
       if (f.type === "int") v = num(v);
       if (typeof v === "string") v = v.trim();
-      if (["dice", "dc", "amount"].includes(f.k) && typeof v === "string") v = v.replace(/\s+/g, "");
+      if (["dice", "dc", "amount"].includes(f.k) && typeof v === "string" && !["sweep", "ricochet"].includes(s.type)) v = v.replace(/\s+/g, "");
       if (v === null || v === "") { if (f.req) o[f.k] = v ?? ""; continue; }
       if (f.k === "amount" && /^-?\d+$/.test(v)) v = Number(v);
       if (f.k === "dc" && /^\d+$/.test(v)) v = Number(v);
@@ -1170,6 +1177,11 @@ function stepsOut(root) {
       list.forEach((n, k) => {
         if (n.type === "else") return;
         if (n.type === "if") { out.push(ifOut(n, list[k + 1] && list[k + 1].type === "else" ? list[k + 1] : null, at.get(n), emit)); return; }
+        if (["sweep", "ricochet"].includes(n.type)) {
+          const o = stepOut(n, at.get(n));
+          if (n.cond.when === "auto" && treeAuto(at.get(n)) !== "always") o.when = treeAuto(at.get(n));
+          o.steps = emit(n.children || []); out.push(o); return;
+        }
         out.push(stepOut(n, at.get(n)));
         if (n.children && !isCtl(n.type)) out.push(...emit(n.children));
       });
@@ -1183,7 +1195,10 @@ function flattenIf(list, chain = []) {
   const out = [];
   for (const s of list || []) {
     if (s && s.type === "if") out.push(...flattenIf(s.steps, chain.concat("if " + ifBits(s).replace(/^if /, ""))), ...flattenIf(s.else, chain.concat("otherwise")));
-    else out.push(chain.length ? Object.assign({}, s, {_ifc: chain}) : s);
+    else if (["sweep", "ricochet"].includes(s?.type)) {
+      out.push(chain.length ? {...s, _ifc: chain} : s);
+      out.push(...flattenIf(s.steps, chain.concat(`${s.type}: +${s.amount ?? 1} extra random enemies`)));
+    } else out.push(chain.length ? Object.assign({}, s, {_ifc: chain}) : s);
   }
   return out;
 }
@@ -1291,6 +1306,11 @@ function checkSteps(steps, where, errs, warns) {
       if (s.footer && s.footer.length > 100) errs.push(`${n}: the footer can be at most 100 characters.`);
     }
     if (s.type === "counter" && !s.counter) errs.push(`${n}: name the counter.`);
+    if (["sweep", "ricochet"].includes(s.type)) {
+      if (s.amount == null || String(s.amount).trim() === "") errs.push(`${n}: enter an amount or expression.`);
+      if (typeof s.amount === "number" && (!Number.isInteger(s.amount) || s.amount < 0 || s.amount > 20)) errs.push(`${n}: use a whole number from 0 to 20.`);
+      if (!s.steps?.length) errs.push(`${n}: add steps inside the ${s.type} block.`);
+    }
     if (s.type === "grant" && !s.actions && !s.bonus_actions) errs.push(`${n}: give at least 1 action or bonus action.`);
     if (s.type === "effect") {
       const e = s.effect, en = typeof e === "string" ? e : e.name;
@@ -1383,6 +1403,7 @@ function sayStep(s, who) {
     case "remove": return `removes ${s.effect === "*" ? "every" + (s.kind ? " " + s.kind : " effect") : s.effect} from ${on}`;
     case "text": return `"${s.text}"`;
     case "counter": return `${s.op} ${s.op === "reset" ? "" : (s.amount ?? 1) + " "}${s.counter}`;
+    case "sweep": case "ricochet": return `${s.type}: +${s.amount ?? 1} extra random enemies for the steps inside`;
     case "grant": return `you gain ${[s.actions ? s.actions + " action" + (s.actions > 1 ? "s" : "") : "", s.bonus_actions ? s.bonus_actions + " bonus action" + (s.bonus_actions > 1 ? "s" : "") : ""].filter(Boolean).join(" and ")}`;
     case "summon": return `summons a ${BEASTS[s.beast] || s.beast}`;
     case "burst": return `sets off the target's ${s.effect} now`;
@@ -1533,6 +1554,12 @@ function stepsFrom(list, skipped) {
           nodes.push(els);
         }
         continue;
+      }
+      if (raw && ["sweep", "ricochet"].includes(raw.type)) {
+        ctr++;
+        const block = newStep(raw.type); block.amount = raw.amount ?? 1; condFrom(raw, block);
+        block._raw = ctr; if (Number.isInteger(raw.of)) block._of = raw.of - 1;
+        block.children = groupFlat(walk(raw.steps)); nodes.push(block); continue;
       }
       ctr++;
       const ri = ctr;
@@ -3249,4 +3276,4 @@ addEventListener("scroll", ev => {
 addEventListener("resize", acClose);
 initAuth();
 </script>
-<script src="forge-workspace.js?v=20261102-ricochet"></script>
+<script src="forge-workspace.js?v=20261102-spread-steps"></script>
