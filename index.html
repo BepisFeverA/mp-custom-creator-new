@@ -403,6 +403,7 @@ button:disabled { opacity: .38; }
         <label for="ex-guild" class="eyebrow">Save / edit in</label>
         <select id="ex-guild" aria-label="Account or server library"></select>
         <select id="ex-existing" aria-label="Existing one you can edit"></select>
+        <button type="button" class="danger" id="ex-delete" disabled>Delete</button>
       </div>
       <p class="ex-blurb" id="ex-blurb"></p>
     </div>
@@ -588,6 +589,14 @@ button:disabled { opacity: .38; }
 </div>
 <div class="toast" id="toast" hidden></div>
 
+<div class="modal-back" id="definition-delete-modal" style="z-index:40" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="definition-delete-title" aria-describedby="definition-delete-text">
+    <h2 id="definition-delete-title">Delete saved definition?</h2>
+    <p id="definition-delete-text"></p>
+    <p class="hint" id="definition-delete-error" role="alert"></p>
+    <div class="head-tools"><button type="button" class="ghost" id="definition-delete-cancel">Cancel</button><button type="button" class="danger" id="definition-delete-confirm">Delete</button></div>
+  </div>
+</div>
 <script>
 
 const FORGE_CONFIG = {apiBase: "https://dry-sphere-deplete.ngrok-free.dev", clientId: "1548238261175193610"};
@@ -1071,7 +1080,7 @@ function renderTriggers() {
     if (w === "attack_hit") extra = bSel(p + "weapon", "Only with", [["", "Any attack"], ["melee", "A melee weapon"], ["ranged", "A ranged weapon"], ["main", "Your main weapon"], ["main_melee", "Main-hand melee"], ["main_ranged", "Main-hand ranged"]], "base");
     return `<div class="mini"><div class="mini-head"><b>Trigger ${i + 1}</b><button type="button" class="tiny ghost" data-trig-del="${i}">Remove</button></div>
       <div class="row">${bSel(p + "when", "Runs", evs, "base")}${bSel(p + "targets", "Aimed at", [["", "The usual target"], ["self", "You"], ["other", "The other creature involved"], ["enemies", "Every enemy"], ["allies", "Every ally"], ["everyone", "Everyone"]], "base")}
-        ${bNum(p + "max_per_round", "Max per round", {min: 1, max: 10, root: "base"})}${bChk(p + "once", "Once per fight", "base")}</div>
+        ${bSel(p + "max_per_round", "Max per round", [["", "Unlimited"], ...Array.from({length: 10}, (_, n) => [String(n + 1), String(n + 1)])], "base")}${bChk(p + "once", "Once per fight", "base")}</div>
       ${extra ? `<div class="row">${extra}</div>` : ""}
       <div class="row">${bText(p + "self_has", "Only if you have", {root: "base", list: "dl-names"})}${bText(p + "self_missing", "Only if you lack", {root: "base", list: "dl-names"})}${bText(p + "counter_is", "Only if a counter is", {root: "base", cls: "mono", hint: "Rage>=1"})}</div></div>`;
   }).join("");
@@ -2308,6 +2317,7 @@ function logoutLocal() {
   Object.values({...CHARS.pics, ...CHARS.big}).forEach(u => { if (u && u !== "pending") URL.revokeObjectURL(u); });
   CHARS.list = null; CHARS.pics = {}; CHARS.big = {}; CHARS.detail = null; CHARS.draft = null; CHARS.error = ""; CHAR = null; EXIST.libs = {};
   $("char-modal").hidden = true;
+  $("definition-delete-modal").hidden = true; DEFINITION_DELETE.target=null; LIB_VIEW.request++;
   $("server-modal").hidden = true; SERVER.list=null;SERVER.detail=null;SERVER.request++;SERVER.loading=false;EXIST.libs={};
   COUNTER_EDITOR.request++; Object.assign(COUNTER_EDITOR, {pid:null, data:null, draft:null, key:null, preview:null, busy:false, confirm:false});
   if (["characters", "counters", "servers"].includes(MODE)) setMode("action"); else renderCharBanner();
@@ -2335,6 +2345,7 @@ function fillExisting() {
     : list === false ? `<option value="">Couldn't load. Pick the server again.</option>`
     : `<option value="">${list.length ? `Choose ${word} you can edit…` : "Nothing here that you can edit"}</option>` + list.map(o => `<option value="${o.i}">${esc(o.x.name)}</option>`).join("");
   sel.disabled = !(list && list.length);
+  syncExistingDelete();
 }
 function renderExisting() {
   const box = $("existing-picker"), kind = existingKind();
@@ -2364,7 +2375,7 @@ document.addEventListener("change", ev => {
     AUTH.guild = ev.target.value; store("forge-guild", AUTH.guild);
     EXIST.libs[AUTH.guild] === false && delete EXIST.libs[AUTH.guild];
     fillExisting(); loadExistingLib(AUTH.guild); syncSaveLabel(); update();
-  } else if (ev.target.id === "ex-existing") loadExisting(ev.target.value);
+  } else if (ev.target.id === "ex-existing") { loadExisting(ev.target.value); syncExistingDelete(); }
 });
 let CHAR = null;
 const SERVER = {list:null,detail:null,gid:null,tab:"items",loading:false,error:"",request:0,account:null,busy:false};
@@ -2401,7 +2412,7 @@ function renderServerModal() {
   }
   const kind=SERVER.tab,list=d[kind]||[],word=kind==="classes"?"class":"item";
   const account=SERVER.account?.[kind]||[];
-  $("server-body").innerHTML=list.map((e,i)=>`<div class="lib-item"><span><b>${esc(e.name)}</b>${e.json.description?`<div class="hint">${esc(e.json.description)}</div>`:""}</span><button type="button" data-server-edit="${i}" ${!d.can_edit?"disabled":""}>Edit</button></div>`).join("")+(list.length?"":`<p class="hint">No custom ${kind} in this server.</p>`)+`<div class="head-tools"><button type="button" class="primary" data-server-new="${word}" ${!d.can_edit?"disabled":""}>New ${word}</button></div>`+(d.can_edit?`<div class="row"><label class="f"><span>Add from my account</span><select id="server-publish-pick"><option value="">Choose ${word}…</option>${account.map(e=>`<option value="${esc(e.id)}">${esc(e.name)}</option>`).join("")}</select></label></div><button type="button" data-server-publish="${word}" ${!account.length||SERVER.busy?"disabled":""}>Add to server</button>${!account.length?'<p class="hint">Save a definition to My account (private) to add a copy here.</p>':""}`:'<p class="hint">A server admin can enable editing for everyone in Settings.</p>')+`<p class="hint" id="server-error" role="alert">${esc(SERVER.dialogError||"")}</p>`;
+  $("server-body").innerHTML=list.map((e,i)=>`<div class="lib-item"><span><b>${esc(e.name)}</b>${e.json.description?`<div class="hint">${esc(e.json.description)}</div>`:""}</span><span class="char-act-btns"><button type="button" data-server-edit="${i}" ${!d.can_edit||SERVER.busy?"disabled":""}>Edit</button>${d.can_edit?`<button type="button" class="danger" data-server-delete="${i}" ${SERVER.busy?"disabled":""}>Delete</button>`:""}</span></div>`).join("")+(list.length?"":`<p class="hint">No custom ${kind} in this server.</p>`)+`<div class="head-tools"><button type="button" class="primary" data-server-new="${word}" ${!d.can_edit?"disabled":""}>New ${word}</button></div>`+(d.can_edit?`<div class="row"><label class="f"><span>Add from my account</span><select id="server-publish-pick"><option value="">Choose ${word}…</option>${account.map(e=>`<option value="${esc(e.id)}">${esc(e.name)}</option>`).join("")}</select></label></div><button type="button" data-server-publish="${word}" ${!account.length||SERVER.busy?"disabled":""}>Add to server</button>${!account.length?'<p class="hint">Save a definition to My account (private) to add a copy here.</p>':""}`:'<p class="hint">A server admin can enable editing for everyone in Settings.</p>')+`<p class="hint" id="server-error" role="alert">${esc(SERVER.dialogError||"")}</p>`;
 }
 function editServerDefinition(word, data=null) {
   const gid=SERVER.gid;if(!SERVER.detail?.can_edit)return;closeServer();AUTH.guild=gid;store("forge-guild",gid);
@@ -2414,6 +2425,7 @@ document.addEventListener("click",async ev=>{
   if(b?.id==="servers-retry"){loadServers();return;}
   if(b?.dataset.serverTab){SERVER.tab=b.dataset.serverTab;renderServerModal();return;}
   if(b?.dataset.serverNew){editServerDefinition(b.dataset.serverNew);return;}
+  if(b?.dataset.serverDelete!=null){const e=SERVER.detail?.[SERVER.tab]?.[Number(b.dataset.serverDelete)];if(e&&SERVER.detail.can_edit)askDefinitionDelete(SERVER.gid,SERVER.tab,e,b);return;}
   if(b?.dataset.serverEdit!=null){const e=SERVER.detail?.[SERVER.tab]?.[Number(b.dataset.serverEdit)];if(e)editServerDefinition(SERVER.tab==="classes"?"class":"item",e.json);return;}
   if(b?.dataset.serverPublish){const id=$("server-publish-pick").value;if(!id)return;const gid=SERVER.gid,seq=SERVER.request;SERVER.dialogError="";SERVER.busy=true;b.disabled=true;
     try{const r=await api(`/api/servers/${encodeURIComponent(gid)}/publish`,{method:"POST",body:JSON.stringify({kind:b.dataset.serverPublish,id})});toast(r.message);delete EXIST.libs[gid];const d=await api(`/api/servers/${encodeURIComponent(gid)}`);if(seq===SERVER.request)SERVER.detail=d;}
@@ -2431,6 +2443,7 @@ document.addEventListener("change",async ev=>{
   finally{el.disabled=false;}
 });
 document.addEventListener("keydown",ev=>{
+  if(!$("definition-delete-modal").hidden)return;
   if(ev.key==="Escape"&&!$("server-modal").hidden){ev.preventDefault();closeServer();return;}
   if((ev.key==="Enter"||ev.key===" ")&&ev.target.matches("[data-server]")){ev.preventDefault();openServer(ev.target.dataset.server);}
 });
@@ -3003,17 +3016,92 @@ async function saveToBot() {
   } catch (e) { toast(e.message); }
   finally { btn.textContent = label; update(); }
 }
-async function openLibrary() {
+const DEFINITION_DELETE = {target:null,busy:false,trigger:null};
+function syncExistingDelete() {
+  const btn=$("ex-delete"), kind=existingKind(), value=$("ex-existing").value;
+  const entry=kind&&editableList(kind)?.find?.(o=>String(o.i)===value)?.x;
+  btn.disabled=!entry||entry.can_edit===false;
+  btn.setAttribute("aria-label", entry ? `Delete ${entry.name}` : "Delete selected saved definition");
+}
+function askDefinitionDelete(scope,kind,entry,trigger) {
+  if(DEFINITION_DELETE.busy||!["items","classes"].includes(kind)||entry.can_edit===false)return;
+  const key=entry.key||entry.id||entry.json?.id;
+  if(!key){toast("Reload this library to delete the saved definition.");return;}
+  const word=kind==="classes"?"class":"item";
+  DEFINITION_DELETE.target={scope,kind,key,name:entry.name};DEFINITION_DELETE.trigger=trigger;
+  $("definition-delete-title").textContent=`Delete ${entry.name}?`;
+  const where=scope==="account"?"your private account library":(AUTH.guilds.find(g=>g.id===scope)?.name||"this server");
+  $("definition-delete-text").textContent=`Delete this ${word} from ${where}? `+(kind==="classes"?"Characters using it will lose its class features.":"Existing copies of this item will stop working.")+" This cannot be undone here.";
+  $("definition-delete-error").textContent="";
+  $("definition-delete-confirm").textContent=`Delete ${word}`;
+  $("definition-delete-confirm").disabled=false;$("definition-delete-cancel").disabled=false;
+  $("definition-delete-modal").hidden=false;$("definition-delete-cancel").focus();
+}
+function closeDefinitionDelete() {
+  if(DEFINITION_DELETE.busy)return;
+  $("definition-delete-modal").hidden=true;DEFINITION_DELETE.target=null;
+  if(DEFINITION_DELETE.trigger?.isConnected)DEFINITION_DELETE.trigger.focus();
+}
+async function confirmDefinitionDelete() {
+  const target=DEFINITION_DELETE.target;if(!target||DEFINITION_DELETE.busy)return;
+  const uid=AUTH.user?.id;
+  DEFINITION_DELETE.busy=true;$("definition-delete-confirm").disabled=true;$("definition-delete-cancel").disabled=true;
+  $("definition-delete-confirm").textContent="Deleting…";$("definition-delete-error").textContent="";
+  try {
+    const query=target.scope==="account"?"scope=account":"scope=server&guild="+encodeURIComponent(target.scope);
+    const result=await api(`/api/library/${target.kind}/${encodeURIComponent(target.key)}?${query}`,{method:"DELETE"});
+    if(AUTH.user?.id!==uid)return;
+    delete EXIST.libs[target.scope];
+    DEFINITION_DELETE.busy=false;closeDefinitionDelete();toast(result.message);
+    const refreshes=[loadExistingLib(target.scope,true)];
+    if(SERVER.gid===target.scope&&SERVER.detail){
+      SERVER.detail[target.kind]=(SERVER.detail[target.kind]||[]).filter(e=>(e.key||e.id||e.json?.id)!==target.key);
+      if(!$("server-modal").hidden)renderServerModal();
+    }
+    if(SERVER.account&&target.scope==="account")SERVER.account[target.kind]=(SERVER.account[target.kind]||[]).filter(e=>(e.key||e.id||e.json?.id)!==target.key);
+    if(!$("lib-modal").hidden&&LIB_VIEW.scope===target.scope)refreshes.push(openLibrary(target.scope));
+    await Promise.allSettled(refreshes);
+  } catch(e) {
+    if(AUTH.user?.id===uid)$("definition-delete-error").textContent=e.message;
+  } finally {
+    DEFINITION_DELETE.busy=false;
+    $("definition-delete-confirm").disabled=false;$("definition-delete-cancel").disabled=false;
+    $("definition-delete-confirm").textContent=`Delete ${target.kind==="classes"?"class":"item"}`;
+  }
+}
+document.addEventListener("click",ev=>{
+  const b=ev.target.closest("button");
+  if(b?.id==="ex-delete"){
+    const kind=existingKind(),x=editableList(kind)?.find?.(o=>String(o.i)===$("ex-existing").value)?.x;
+    if(x)askDefinitionDelete(AUTH.guild,kind,x,b);
+  } else if(b?.id==="definition-delete-cancel"||ev.target===$("definition-delete-modal"))closeDefinitionDelete();
+  else if(b?.id==="definition-delete-confirm")confirmDefinitionDelete();
+});
+document.addEventListener("keydown",ev=>{
+  if($("definition-delete-modal").hidden)return;
+  if(ev.key==="Escape"){ev.preventDefault();closeDefinitionDelete();}
+  if(ev.key==="Tab"){
+    const first=$("definition-delete-cancel"),last=$("definition-delete-confirm");
+    if(ev.shiftKey&&document.activeElement===first){ev.preventDefault();last.focus();}
+    else if(!ev.shiftKey&&document.activeElement===last){ev.preventDefault();first.focus();}
+  }
+});
+
+const LIB_VIEW = {scope:null, request:0};
+async function openLibrary(scope=AUTH.guild) {
+  LIB_VIEW.scope=scope;const seq=++LIB_VIEW.request;
+  window.__forgeLib=null;
   $("lib-modal").hidden = false;
   $("lib-body").innerHTML = `<p class="hint">Loading…</p>`;
   try {
-    const lib = await api(AUTH.guild === "account" ? "/api/library?scope=account" : "/api/library" + (AUTH.guild ? "?guild=" + encodeURIComponent(AUTH.guild) : ""));
+    const lib = await api(scope === "account" ? "/api/library?scope=account" : "/api/library?guild=" + encodeURIComponent(scope));
+    if(seq!==LIB_VIEW.request||!AUTH.user||$("lib-modal").hidden)return;
     window.__forgeLib = lib;
-    const gname = AUTH.guild === "account" ? "your account (private)" : (AUTH.guilds.find(g => g.id === AUTH.guild) || {}).name || "this server";
-    const group = (title, list, kind, empty) => `<div class="lib-group"><h3>${esc(title)}</h3>${list.length ? list.map((x, i) => `<div class="lib-item"><span>${esc(x.name)}${x.can_edit === false ? ` <em class="hint">(view only)</em>` : ""}</span><button type="button" class="tiny" data-lib-kind="${kind}" data-lib-i="${i}">Edit</button></div>`).join("") : `<p class="hint" style="margin:0">${esc(empty)}</p>`}</div>`;
+    const gname = scope === "account" ? "your account (private)" : (AUTH.guilds.find(g => g.id === scope) || {}).name || "this server";
+    const group = (title, list, kind, empty) => `<div class="lib-group"><h3>${esc(title)}</h3>${list.length ? list.map((x, i) => `<div class="lib-item"><span>${esc(x.name)}${x.can_edit === false ? ` <em class="hint">(view only)</em>` : ""}</span><span class="char-act-btns"><button type="button" class="tiny" data-lib-kind="${kind}" data-lib-i="${i}">Edit</button>${kind!=="actions"&&x.can_edit!==false?`<button type="button" class="tiny danger" data-lib-delete-kind="${kind}" data-lib-delete-i="${i}">Delete</button>`:""}</span></div>`).join("") : `<p class="hint" style="margin:0">${esc(empty)}</p>`}</div>`;
     $("lib-body").innerHTML = group("Your actions (homebrew profile)", lib.actions, "actions", AUTH.homebrew && AUTH.homebrew.profile ? "No custom actions yet." : "No homebrew profile yet. In Discord: $mode homebrew, then $profile create.")
       + group(`Classes in ${gname}`, lib.classes, "classes", "No custom classes yet.") + group(`Items in ${gname}`, lib.items, "items", "No custom items yet.");
-  } catch (e) { $("lib-body").innerHTML = `<p class="hint" style="color:var(--bad)">${esc(e.message)}</p>`; }
+  } catch (e) { if(seq!==LIB_VIEW.request||!AUTH.user||$("lib-modal").hidden)return; $("lib-body").innerHTML = `<p class="hint" style="color:var(--bad)">${esc(e.message)}</p>`; }
 }
 function loadFromLibrary(kind, i) {
   const x = ((window.__forgeLib || {})[kind] || [])[i]; if (!x) return;
@@ -3032,6 +3120,7 @@ document.addEventListener("click", ev => {
   else if (b.id === "save-bot") saveToBot();
   else if (b.id === "lib-open") { MENU_OPEN = false; renderAccount(); openLibrary(); }
   else if (b.id === "lib-close") $("lib-modal").hidden = true;
+  else if (b.dataset.libDeleteKind) {const kind=b.dataset.libDeleteKind,x=window.__forgeLib?.[kind]?.[Number(b.dataset.libDeleteI)];if(x&&x.can_edit!==false)askDefinitionDelete(LIB_VIEW.scope,kind,x,b);}
   else if (b.dataset.libKind) loadFromLibrary(b.dataset.libKind, Number(b.dataset.libI));
 });
 document.addEventListener("input", ev => { if (ev.target.id === "guild-pick") { AUTH.guild = ev.target.value; store("forge-guild", AUTH.guild); renderExisting(); syncSaveLabel(); update(); } });
@@ -3276,4 +3365,4 @@ addEventListener("scroll", ev => {
 addEventListener("resize", acClose);
 initAuth();
 </script>
-<script src="forge-workspace.js?v=20261102-spread-steps"></script>
+<script src="forge-workspace.js?v=20261102-definition-delete"></script>

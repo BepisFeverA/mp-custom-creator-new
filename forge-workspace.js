@@ -1,3 +1,4 @@
+/* Advanced automation workspace. Uses the existing page's controls and styles. */
 (() => {
   "use strict";
   const clone = x => JSON.parse(JSON.stringify(x));
