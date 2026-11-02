@@ -332,7 +332,7 @@ button:disabled { opacity: .38; }
 .ac-label b { color: var(--accent); font-weight: 700; }
 .ac-detail { margin-left: auto; padding-left: 16px; color: var(--muted); font-size: 12px; white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .ac-row .ico { width: 16px; height: 16px; margin: 0; flex: none; }
-#chars { display: flex; flex-direction: column; gap: 14px; }
+#chars, #servers { display: flex; flex-direction: column; gap: 14px; }
 .chars-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .chars-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
 .char { position: relative; aspect-ratio: 5 / 6; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); isolation: isolate; }
@@ -393,14 +393,15 @@ button:disabled { opacity: .38; }
         <button type="button" role="tab" data-mode="item" aria-selected="false">Item</button>
         <button type="button" role="tab" data-mode="counters" aria-selected="false" id="tab-counters" hidden>Counters</button>
         <button type="button" role="tab" data-mode="characters" aria-selected="false" id="tab-chars" hidden>Characters</button>
+        <button type="button" role="tab" data-mode="servers" aria-selected="false" id="tab-servers" hidden>Servers</button>
       </div>
       <div class="picker" style="margin-top:10px">
         <label for="ex" class="eyebrow">Start from an example</label>
         <select id="ex"></select>
       </div>
       <div class="picker" id="existing-picker" style="margin-top:10px" hidden>
-        <label for="ex-guild" class="eyebrow">Edit one from</label>
-        <select id="ex-guild" aria-label="Server"></select>
+        <label for="ex-guild" class="eyebrow">Save / edit in</label>
+        <select id="ex-guild" aria-label="Account or server library"></select>
         <select id="ex-existing" aria-label="Existing one you can edit"></select>
       </div>
       <p class="ex-blurb" id="ex-blurb"></p>
@@ -415,6 +416,8 @@ button:disabled { opacity: .38; }
     <div class="chars-head"><h2 id="h-chars">Your characters</h2><span class="hint" id="chars-sub"></span></div>
     <div class="chars-grid" id="chars-grid"></div>
   </section>
+
+  <section id="servers" hidden aria-labelledby="h-servers"><div class="chars-head"><h2 id="h-servers">Your servers</h2><span class="hint" id="servers-sub"></span></div><div class="chars-grid" id="servers-grid"></div></section>
 
   <section class="grid" id="counter-area" hidden aria-label="Character counters"></section>
   <div class="grid" id="forge-grid">
@@ -529,8 +532,8 @@ button:disabled { opacity: .38; }
           <span class="count" id="char-count"></span>
         </div>
         <ol class="how" id="how-entity" hidden>
-          <li>Copy the import command and paste it in Discord (in homebrew mode). Everyone in your server can then use it.</li>
-          <li>Over 2,000 characters? Copy the JSON, save it as <code class="inl">custom.json</code>, and send <code class="inl">$custom import</code> with the file attached.</li>
+          <li id="how-entity-scope">Copy the import command and paste it in Discord (in homebrew mode).</li>
+          <li>Over 2,000 characters? Copy the JSON, save it as <code class="inl">custom.json</code>, and send <code class="inl" id="entity-import-command">$custom import</code> with the file attached.</li>
           <li id="how-entity-use"></li>
         </ol>
         <ol class="how" id="how-action">
@@ -559,6 +562,12 @@ button:disabled { opacity: .38; }
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="lib-title">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><h2 id="lib-title">Load from the bot</h2><button type="button" class="ghost tiny" id="lib-close">Close</button></div>
     <div id="lib-body" class="lib-body"><p class="hint">Loading…</p></div>
+  </div>
+</div>
+<div class="modal-back" id="server-modal" hidden>
+  <div class="modal wide" role="dialog" aria-modal="true" aria-labelledby="server-title">
+    <div class="char-modal-head"><span class="char-avatar" id="server-avatar" aria-hidden="true"></span><div style="flex:1;min-width:0"><h2 id="server-title"></h2><span class="hint" id="server-meta"></span></div><button type="button" class="ghost" id="server-close">Close</button></div>
+    <div class="tabs" id="server-tabs"></div><div class="lib-body" id="server-body"></div>
   </div>
 </div>
 <div class="modal-back" id="char-modal" hidden>
@@ -679,7 +688,7 @@ const STEP_TYPES = {
     {k: "effect", label: "Effect name, or * for all", type: "datalist", list: "dl-status", def: "*"},
     {k: "kind", label: "Only of kind", type: "select", options: ["", "buff", "debuff", "neutral"], labels: {"": "Any", buff: "Buffs", debuff: "Debuffs", neutral: "Neutral"}, def: ""},
     {k: "from", label: "From", type: "select", options: ["target", "self"], labels: {target: "The target", self: "You"}, def: "target"}]},
-  text: {label: "Text line", blurb: "Adds a line", fields: [{k: "text", label: "Text", type: "text", def: "The air grows cold.", req: true}]},
+  text: {label: "Text line", blurb: "Adds a line", fields: [{k: "text", label: "Text", type: "area", max: 1024, def: "The air grows cold.", req: true}]},
   counter: {label: "Counter", blurb: "Spends or gains a counter", fields: [
     {k: "counter", label: "Counter name", type: "text", def: "Ki", req: true},
     {k: "op", label: "Do", type: "select", options: ["spend", "gain", "set", "reset"], def: "spend"},
@@ -874,7 +883,7 @@ function fieldHTML(s, f, i) {
   if (f.needsSave && !hasBefore(i, "save")) return "";
   const lab = `<span>${esc(f.label)}${f.hint ? ` <em>${esc(f.hint)}</em>` : ""}</span>`;
   const v = s[f.k];
-  if (f.type === "area") return `<label class="f" style="grid-column:1/-1">${lab}<textarea rows="4" class="mono" id="${id}" data-s="${s.id}" data-k="${f.k}" maxlength="500" spellcheck="false">${esc(v)}</textarea></label>`;
+  if (f.type === "area") return `<label class="f" style="grid-column:1/-1">${lab}<textarea rows="4" class="mono" id="${id}" data-s="${s.id}" data-k="${f.k}" maxlength="${f.max || 500}" spellcheck="false">${esc(v)}</textarea></label>`;
   if (f.type === "bool") return `<label class="chk"><input type="checkbox" id="${id}" data-s="${s.id}" data-k="${f.k}" ${v ? "checked" : ""}> ${esc(f.label)}</label>`;
   if (f.type === "select") return `<label class="f">${lab}<select id="${id}" data-s="${s.id}" data-k="${f.k}">${f.options.map(o => opt(o, v, (f.labels || {})[o] ?? o)).join("")}</select></label>`;
   if (f.type === "int") return `<label class="f">${lab}<input type="number" id="${id}" data-s="${s.id}" data-k="${f.k}" data-int="1" min="${f.min}" max="${f.max}" value="${v ?? ""}"></label>`;
@@ -1460,7 +1469,7 @@ function renderPreview(full) {
 }
 
 let lastJson = "", lastCmd = "";
-function update() { if (["characters", "counters"].includes(MODE)) return; if (MODE !== "action") return updateEntity(); updateAction(); }
+function update() { if (["characters", "counters", "servers"].includes(MODE)) return; if (MODE !== "action") return updateEntity(); updateAction(); }
 function updateAction() {
   const a = buildAction();
   const {errs, warns} = check(a);
@@ -1493,7 +1502,7 @@ function updateAction() {
   renderPreview(a);
   try { localStorage.setItem("forge-draft-v4", JSON.stringify(S)); } catch (e) {}
 }
-function rerender() { if (["characters", "counters"].includes(MODE)) return; if (MODE !== "action") { renderEntity(); update(); return; } renderTabs(); renderRules(); renderSteps(); renderFields(); renderLooks(); renderTriggers(); fillBasics(); update(); }
+function rerender() { if (["characters", "counters", "servers"].includes(MODE)) return; if (MODE !== "action") { renderEntity(); update(); return; } renderTabs(); renderRules(); renderSteps(); renderFields(); renderLooks(); renderTriggers(); fillBasics(); update(); }
 
 function condFrom(raw, s) {
   if (raw.when) s.cond.when = raw.when;
@@ -2151,13 +2160,15 @@ function entityPreview(o) {
 function updateEntity() {
   const o = MODE === "class" ? buildClass() : buildItem(), {errs, warns} = checkEntity(o);
   lastJson = JSON.stringify(o, null, 2);
-  lastCmd = "$custom import\n```json\n" + JSON.stringify(o) + "\n```";
+  lastCmd = "$custom " + (AUTH.guild === "account" ? "account " : "") + "import\n```json\n" + JSON.stringify(o) + "\n```";
   $("out").textContent = lastJson;
   $("issues").innerHTML = errs.map(e => `<li>${esc(e)}</li>`).join("") + warns.map(w => `<li class="warn">${esc(w)}</li>`).join("");
   $("status").innerHTML = errs.length ? `<span class="status bad">${errs.length} to fix</span>` : `<span class="status good">Ready to import</span>`;
   $("copy-cmd").disabled = $("copy-json").disabled = $("save-bot").disabled = errs.length > 0;
   $("char-count").textContent = `${lastCmd.length.toLocaleString()} / 2,000 characters`;
   $("char-count").classList.toggle("over", lastCmd.length > 2000);
+  $("how-entity-scope").textContent = AUTH.guild === "account" ? "Save to your account to keep this definition private and available across servers. The import command also saves privately." : "Save to this server so its members can use the definition. Server editing permissions apply.";
+  $("entity-import-command").textContent = AUTH.guild === "account" ? "$custom account import" : "$custom import";
   $("how-entity-use").innerHTML = MODE === "class" ? `Pick it with <code class="inl">$class ${esc(o.name || "name")}</code>.` : `Get it with <code class="inl">$give ${esc(o.name || "name")}</code>, then <code class="inl">$equip ${esc(o.name || "name")}</code>.`;
   entityPreview(o);
   try { localStorage.setItem("forge-entities", JSON.stringify({CL, IT})); } catch (e) {}
@@ -2183,18 +2194,21 @@ function renderEntity() {
   if (MODE === "class") renderClassForm(); else if (MODE === "item") renderItemForm();
 }
 function setMode(m) {
-  if (["characters", "counters"].includes(m) && !AUTH.user) m = "action";
+  if (["characters", "counters", "servers"].includes(m) && !AUTH.user) m = "action";
   MODE = m;
   document.querySelectorAll("[data-mode]").forEach(b => b.setAttribute("aria-selected", String(b.dataset.mode === m)));
   const gallery = m === "characters";
+  const serverMode = m === "servers";
   const counterMode = m === "counters";
   $("chars").hidden = !gallery;
+  $("servers").hidden = !serverMode;
   $("counter-area").hidden = !counterMode;
-  $("forge-grid").hidden = gallery || counterMode;
-  document.querySelectorAll("header .picker, header .head-tools, #ex-blurb").forEach(e => e.classList.toggle("mode-off", gallery || counterMode));
+  $("forge-grid").hidden = gallery || counterMode || serverMode;
+  document.querySelectorAll("header .picker, header .head-tools, #ex-blurb").forEach(e => e.classList.toggle("mode-off", gallery || counterMode || serverMode));
   renderCharBanner(); syncSaveLabel(); renderExisting();
   if (counterMode) { renderCounterArea(); if (!CHARS.list) loadCharacters(); return; }
   if (gallery) { renderCharacters(); loadCharacters(); return; }
+  if (serverMode) { renderServers(); loadServers(); return; }
   document.querySelectorAll(".forge > section.card").forEach(s => s.classList.toggle("mode-off", s.classList.contains("entity-card") ? s.dataset.only !== m : m !== "action"));
   $("pv-var").closest(".picker").classList.toggle("mode-off", m !== "action");
   $("how-entity").hidden = m === "action"; $("how-action").hidden = m !== "action";
@@ -2259,15 +2273,17 @@ function logoutLocal() {
   Object.values({...CHARS.pics, ...CHARS.big}).forEach(u => { if (u && u !== "pending") URL.revokeObjectURL(u); });
   CHARS.list = null; CHARS.pics = {}; CHARS.big = {}; CHARS.detail = null; CHARS.draft = null; CHARS.error = ""; CHAR = null; EXIST.libs = {};
   $("char-modal").hidden = true;
+  $("server-modal").hidden = true; SERVER.list=null;SERVER.detail=null;SERVER.request++;SERVER.loading=false;EXIST.libs={};
   COUNTER_EDITOR.request++; Object.assign(COUNTER_EDITOR, {pid:null, data:null, draft:null, key:null, preview:null, busy:false, confirm:false});
-  if (["characters", "counters"].includes(MODE)) setMode("action"); else renderCharBanner();
+  if (["characters", "counters", "servers"].includes(MODE)) setMode("action"); else renderCharBanner();
   renderAccount();
 }
 function applySession(data) {
   AUTH.user = data.user; AUTH.guilds = data.guilds || []; AUTH.homebrew = data.homebrew || null;
   const saved = read("forge-guild");
-  AUTH.guild = AUTH.guilds.some(g => g.id === saved) ? saved : (AUTH.guilds[0] || {}).id || null;
-  renderAccount();
+  AUTH.guild = saved === "account" || AUTH.guilds.some(g => g.id === saved) ? saved : "account";
+  renderAccount(); syncSaveLabel();
+  if(["class","item"].includes(MODE))update();
   loadCharacters();
 }
 const EXIST = {libs: {}};
@@ -2287,16 +2303,17 @@ function fillExisting() {
 }
 function renderExisting() {
   const box = $("existing-picker"), kind = existingKind();
-  box.hidden = !(kind && AUTH.user && AUTH.guilds.length);
+  box.hidden = !(kind && AUTH.user);
   if (box.hidden) return;
-  $("ex-guild").innerHTML = AUTH.guilds.map(g => opt(g.id, AUTH.guild, g.name)).join("");
+  $("ex-guild").innerHTML = opt("account", AUTH.guild, "My account (private)") + AUTH.guilds.map(g => opt(g.id, AUTH.guild, g.name+(g.can_edit===false?" (view only)":""))).join("");
   fillExisting();
   loadExistingLib(AUTH.guild);
 }
 async function loadExistingLib(gid, force) {
   if (!gid || (!force && EXIST.libs[gid] !== undefined)) return;
-  try { EXIST.libs[gid] = await api("/api/library?guild=" + encodeURIComponent(gid)); }
+  try { EXIST.libs[gid] = await api(gid === "account" ? "/api/library?scope=account" : "/api/library?guild=" + encodeURIComponent(gid)); }
   catch (e) { EXIST.libs[gid] = false; toast(e.message); }
+  const row=AUTH.guilds.find(g=>g.id===gid);if(row&&EXIST.libs[gid]){row.can_edit=EXIST.libs[gid].can_edit;row.admin=EXIST.libs[gid].admin;}
   if (gid === AUTH.guild && existingKind()) fillExisting();
 }
 function loadExisting(i) {
@@ -2311,15 +2328,82 @@ document.addEventListener("change", ev => {
   if (ev.target.id === "ex-guild") {
     AUTH.guild = ev.target.value; store("forge-guild", AUTH.guild);
     EXIST.libs[AUTH.guild] === false && delete EXIST.libs[AUTH.guild];
-    fillExisting(); loadExistingLib(AUTH.guild);
+    fillExisting(); loadExistingLib(AUTH.guild); syncSaveLabel(); update();
   } else if (ev.target.id === "ex-existing") loadExisting(ev.target.value);
 });
 let CHAR = null;
+const SERVER = {list:null,detail:null,gid:null,tab:"items",loading:false,error:"",request:0,account:null,busy:false};
+function renderServers() {
+  $("servers-sub").textContent=SERVER.list?`${SERVER.list.length} with the bot`:"";
+  const grid=$("servers-grid");
+  if(SERVER.error){grid.innerHTML=`<div class="notice" style="grid-column:1/-1"><span>${esc(SERVER.error)}</span><button id="servers-retry" type="button">Try again</button></div>`;return;}
+  if(!SERVER.list){grid.innerHTML='<p class="hint">Loading…</p>';return;}
+  grid.innerHTML=SERVER.list.map(g=>`<div class="char" data-server="${esc(g.id)}" tabindex="0" role="button" aria-label="Open ${esc(g.name)}" style="--h:${hueOf(g.name)}"><div class="char-art"${g.banner||g.icon?` style="background-image:url('${esc(g.banner||g.icon)}')"`:""}>${g.banner||g.icon?"":`<span class="char-initial">${esc(g.name[0].toUpperCase())}</span>`}</div><div class="char-over"><div><span class="char-name">${esc(g.name)}</span><span class="char-meta">${g.admin?"Admin":g.can_edit?"Editing allowed":"View only"}</span></div><div class="char-bottom"><button type="button" class="char-btn" data-server-open="${esc(g.id)}" aria-label="Custom content of ${esc(g.name)}" title="Custom classes and items">${BOOK_SVG}</button></div></div></div>`).join("")||'<p class="hint">You and the bot do not share a server yet.</p>';
+}
+async function loadServers() {
+  if(!AUTH.user||SERVER.loading)return;
+  SERVER.loading=true;SERVER.error="";const uid=AUTH.user.id;
+  try{const res=await api("/api/servers");if(AUTH.user?.id!==uid)return;SERVER.list=res.servers;AUTH.guilds=res.servers;renderExisting();}
+  catch(e){SERVER.error=e.message;}
+  finally{SERVER.loading=false;if(MODE==="servers")renderServers();}
+}
+function closeServer() {$("server-modal").hidden=true;SERVER.request++;document.querySelector(`[data-server="${CSS.escape(SERVER.gid||"")}"]`)?.focus();}
+async function openServer(gid) {
+  SERVER.gid=gid;SERVER.detail=null;SERVER.tab="items";SERVER.busy=false;SERVER.account=null;SERVER.dialogError="";const seq=++SERVER.request;
+  $("server-modal").hidden=false;$("server-title").textContent=AUTH.guilds.find(g=>g.id===gid)?.name||"Server";$("server-body").innerHTML='<p class="hint">Loading…</p>';$("server-tabs").innerHTML="";$("server-meta").textContent="";
+  try{const d=await api(`/api/servers/${encodeURIComponent(gid)}`);if(seq!==SERVER.request)return;SERVER.detail=d;renderServerModal();
+    const account=await api("/api/library?scope=account");if(seq===SERVER.request){SERVER.account=account;renderServerModal();}}
+  catch(e){if(seq===SERVER.request)$("server-body").innerHTML=`<p class="hint" role="alert">${esc(e.message)}</p>`;}
+  if(seq===SERVER.request&&!$("server-modal").hidden)$("server-close").focus();
+}
+function renderServerModal() {
+  const d=SERVER.detail;if(!d)return;
+  $("server-title").textContent=d.name;$("server-meta").textContent=d.admin?"Server admin":d.can_edit?"Everyone can edit custom content":"View only";
+  $("server-avatar").style.backgroundImage=d.icon?`url('${d.icon}')`:"";$("server-avatar").style.setProperty("--h",hueOf(d.name));
+  $("server-tabs").innerHTML=[["items","Items"],["classes","Classes"],["settings","Settings"]].map(([k,label])=>`<button type="button" class="tab" data-server-tab="${k}" aria-pressed="${SERVER.tab===k}">${label}</button>`).join("");
+  if(SERVER.tab==="settings"){
+    $("server-body").innerHTML=`<label class="chk"><input type="checkbox" id="server-everyone" ${d.settings.allow_everyone_edit?"checked":""} ${!d.admin||SERVER.busy?"disabled":""}> Allow everyone to edit custom items/classes</label><p class="hint">${d.admin?"When enabled, all server members can add and edit this server's custom items and classes.":"Only server admins can change this setting."}</p><p class="hint" id="server-error" role="alert">${esc(SERVER.dialogError||"")}</p>`;return;
+  }
+  const kind=SERVER.tab,list=d[kind]||[],word=kind==="classes"?"class":"item";
+  const account=SERVER.account?.[kind]||[];
+  $("server-body").innerHTML=list.map((e,i)=>`<div class="lib-item"><span><b>${esc(e.name)}</b>${e.json.description?`<div class="hint">${esc(e.json.description)}</div>`:""}</span><button type="button" data-server-edit="${i}" ${!d.can_edit?"disabled":""}>Edit</button></div>`).join("")+(list.length?"":`<p class="hint">No custom ${kind} in this server.</p>`)+`<div class="head-tools"><button type="button" class="primary" data-server-new="${word}" ${!d.can_edit?"disabled":""}>New ${word}</button></div>`+(d.can_edit?`<div class="row"><label class="f"><span>Add from my account</span><select id="server-publish-pick"><option value="">Choose ${word}…</option>${account.map(e=>`<option value="${esc(e.id)}">${esc(e.name)}</option>`).join("")}</select></label></div><button type="button" data-server-publish="${word}" ${!account.length||SERVER.busy?"disabled":""}>Add to server</button>${!account.length?'<p class="hint">Save a definition to My account (private) to add a copy here.</p>':""}`:'<p class="hint">A server admin can enable editing for everyone in Settings.</p>')+`<p class="hint" id="server-error" role="alert">${esc(SERVER.dialogError||"")}</p>`;
+}
+function editServerDefinition(word, data=null) {
+  const gid=SERVER.gid;if(!SERVER.detail?.can_edit)return;closeServer();AUTH.guild=gid;store("forge-guild",gid);
+  if(word==="class")CL=data?entityFrom(JSON.parse(JSON.stringify(data))):BLANK_CLASS();else IT=data?entityFrom(JSON.parse(JSON.stringify(data))):BLANK_ITEM();
+  setMode(word);renderExisting();syncSaveLabel();window.scrollTo({top:0});
+}
+document.addEventListener("click",async ev=>{
+  const b=ev.target.closest("button"),tile=ev.target.closest("[data-server]");
+  if(b?.id==="server-close"){closeServer();return;}
+  if(b?.id==="servers-retry"){loadServers();return;}
+  if(b?.dataset.serverTab){SERVER.tab=b.dataset.serverTab;renderServerModal();return;}
+  if(b?.dataset.serverNew){editServerDefinition(b.dataset.serverNew);return;}
+  if(b?.dataset.serverEdit!=null){const e=SERVER.detail?.[SERVER.tab]?.[Number(b.dataset.serverEdit)];if(e)editServerDefinition(SERVER.tab==="classes"?"class":"item",e.json);return;}
+  if(b?.dataset.serverPublish){const id=$("server-publish-pick").value;if(!id)return;const gid=SERVER.gid,seq=SERVER.request;SERVER.dialogError="";SERVER.busy=true;b.disabled=true;
+    try{const r=await api(`/api/servers/${encodeURIComponent(gid)}/publish`,{method:"POST",body:JSON.stringify({kind:b.dataset.serverPublish,id})});toast(r.message);delete EXIST.libs[gid];const d=await api(`/api/servers/${encodeURIComponent(gid)}`);if(seq===SERVER.request)SERVER.detail=d;}
+    catch(e){if(seq===SERVER.request)SERVER.dialogError=e.message;}
+    finally{SERVER.busy=false;if(seq===SERVER.request&&!$("server-modal").hidden)renderServerModal();}return;
+  }
+  if(b?.dataset.serverOpen||tile){openServer(b?.dataset.serverOpen||tile.dataset.server);return;}
+  if(ev.target===$("server-modal"))closeServer();
+});
+document.addEventListener("change",async ev=>{
+  if(ev.target.id!=="server-everyone"||!SERVER.detail?.admin)return;
+  const el=ev.target, value=el.checked, gid=SERVER.gid, seq=SERVER.request;el.disabled=true;
+  try{const r=await api(`/api/servers/${encodeURIComponent(gid)}/settings`,{method:"PATCH",body:JSON.stringify({allow_everyone_edit:value})});delete EXIST.libs[gid];if(seq===SERVER.request){SERVER.detail.settings=r.settings;SERVER.detail.can_edit=SERVER.detail.admin||value;}toast(r.message);loadServers();}
+  catch(e){el.checked=!value;if(seq===SERVER.request)$("server-error").textContent=e.message;}
+  finally{el.disabled=false;}
+});
+document.addEventListener("keydown",ev=>{
+  if(ev.key==="Escape"&&!$("server-modal").hidden){ev.preventDefault();closeServer();return;}
+  if((ev.key==="Enter"||ev.key===" ")&&ev.target.matches("[data-server]")){ev.preventDefault();openServer(ev.target.dataset.server);}
+});
 const CHARS = {options: null, creating: false, list: null, pics: {}, big: {}, detail: null, loading: false, error: "", tab: "actions", draft: null, confirmDel: null, confirmTimer: 0, busy: "", classGuild: null};
 const BOOK_SVG = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 5c-1.11-.35-2.33-.5-3.5-.5-1.95 0-4.05.4-5.5 1.5-1.45-1.1-3.55-1.5-5.5-1.5S2.45 4.9 1 6v14.65c0 .25.25.5.5.5.1 0 .15-.05.25-.05C3.1 20.45 5.05 20 6.5 20c1.95 0 4.05.4 5.5 1.5 1.35-.85 3.8-1.5 5.5-1.5 1.65 0 3.35.3 4.75 1.05.1.05.15.05.25.05.25 0 .5-.25.5-.5V6c-.6-.45-1.25-.75-2-1zm0 13.5c-1.1-.35-2.3-.5-3.5-.5-1.7 0-4.15.65-5.5 1.5V8c1.35-.85 3.8-1.5 5.5-1.5 1.2 0 2.4.15 3.5.5v11.5z"/></svg>`;
 const hueOf = name => { let h = 0; for (const ch of String(name)) h = (h * 31 + ch.charCodeAt(0)) % 360; return h; };
-const charMeta = c => [c.class, c.level ? `Level ${c.level}` : ""].filter(Boolean).join(" · ");
-function syncSaveLabel() { $("save-bot").textContent = CHAR && MODE === "action" ? `Save to ${CHAR.name}` : "Save to the bot"; }
+const charMeta = c => [c.className || c.class, c.level ? `Level ${c.level}` : ""].filter(Boolean).join(" · ");
+function syncSaveLabel() { $("save-bot").textContent = CHAR && MODE === "action" ? `Save to ${CHAR.name}` : ["class","item"].includes(MODE) ? (AUTH.guild==="account" ? "Save to my account" : "Save to server") : "Save to the bot"; }
 function renderCharBanner() {
   const b = $("char-banner");
   if (!CHAR || MODE !== "action") { b.hidden = true; b.innerHTML = ""; return; }
@@ -2380,7 +2464,7 @@ function applyDetail(d) {
   CHARS.detail = d;
   if (Array.isArray(d.classGuilds) && !d.classGuilds.some(g => g.id === CHARS.classGuild)) CHARS.classGuild = "";
   const row = (CHARS.list || []).find(c => c.id === d.id);
-  if (row) Object.assign(row, {name: d.name, class: d.class, level: d.level, picture: d.picture, actions: d.actions});
+  if (row) Object.assign(row, {name: d.name, class: d.class, level: d.level, picture: d.picture, actions: d.actions, className:d.className});
   if (!d.picture && CHARS.pics[d.id]) { revokeMedia(CHARS.pics, d.id); CHARS.pics[d.id] = ""; }
   if (!d.image && CHARS.big[d.id]) revokeMedia(CHARS.big, d.id);
   if (CHAR && CHAR.id === d.id) { CHAR.name = d.name; renderCharBanner(); syncSaveLabel(); }
@@ -2397,7 +2481,7 @@ async function loadBig(pid) {
   if (CHARS.detail && CHARS.detail.id === pid && !$("char-modal").hidden && CHARS.tab === "pictures") renderCharModal();
 }
 function classOptions(d, draft) {
-  const group = (label, list) => list.length ? `<optgroup label="${esc(label)}">${list.map(c => opt(c, draft.class, c)).join("")}</optgroup>` : "";
+  const group = (label, list) => list.length ? `<optgroup label="${esc(label)}">${list.map(c => opt(c, draft.class, d.classLabels?.[c] || c)).join("")}</optgroup>` : "";
   if (Array.isArray(d.classGuilds)) {
     const builtin = Array.isArray(d.classes) ? d.classes : [];
     const groups = d.classGuilds.filter(g => !CHARS.classGuild || g.id === CHARS.classGuild);
@@ -2418,7 +2502,7 @@ function detailsHTML(d) {
   if (!hasCharacterDetails(d)) return `<p class="hint" style="margin:0">The bot hasn't sent this character's details. Restart the bot to load the updated character editor API, then try again.</p>`;
   const stat = a => `<label class="f"><span>${a} <em data-mod="${a}">${modText(f.stats[a])}</em></span><input type="number" data-cd="stat:${a}" min="1" max="30" value="${esc(f.stats[a])}"></label>`;
   const classGuilds = Array.isArray(d.classGuilds) ? d.classGuilds : AUTH.guilds;
-  const serverPick = classGuilds.length ? `<label class="f"><span>Custom classes from</span><select data-cd="guild">${Array.isArray(d.classGuilds) ? opt("", CHARS.classGuild, "All servers") : ""}${classGuilds.map(g => opt(g.id, CHARS.classGuild, g.name)).join("")}</select></label>` : "";
+  const serverPick = classGuilds.length ? `<label class="f"><span>Custom classes from</span><select data-cd="guild">${Array.isArray(d.classGuilds) ? opt("", CHARS.classGuild, "All libraries") : ""}${classGuilds.map(g => opt(g.id, CHARS.classGuild, g.name)).join("")}</select></label>` : "";
   return `<div class="row">
       <label class="f" style="grid-column: span 2"><span>Name <em>max 100</em></span><input type="text" data-cd="name" maxlength="100" value="${esc(f.name)}" autocomplete="off"></label>
       <label class="f"><span>Level <em>1-${d.maxLevel}</em></span><input type="number" data-cd="level" min="1" max="${d.maxLevel}" value="${esc(f.level)}"></label></div>
@@ -2652,7 +2736,7 @@ document.addEventListener("input", ev => {
 });
 document.addEventListener("keydown", ev => {
   if (ev.key === "Escape" && !$("char-modal").hidden) $("char-modal").hidden = true;
-  if ((ev.key === "Enter" || ev.key === " ") && ev.target.classList && ev.target.classList.contains("char")) { ev.preventDefault(); openCharacter(ev.target.dataset.char); }
+  if ((ev.key === "Enter" || ev.key === " ") && ev.target.matches(".char[data-char]")) { ev.preventDefault(); openCharacter(ev.target.dataset.char); }
 });
 const COUNTER_EDITOR = {pid: null, data: null, draft: null, key: null, request: 0, busy: false, confirm: false, preview: null};
 const blankCharacterCounter = () => ({name: "", desc: "", min: "0", max: "5", reset: "long", reset_to: "max", style: "", fill: "", empty: "", value: ""});
@@ -2830,13 +2914,14 @@ function renderAccount() {
   $("save-bot").hidden = !(loginReady() && AUTH.user);
   $("tab-chars").hidden = !AUTH.user;
   $("tab-counters").hidden = !AUTH.user;
+  $("tab-servers").hidden = !AUTH.user;
   renderExisting();
   if (!AUTH.user) { MENU_OPEN = false; box.innerHTML = `<button type="button" class="discord" id="login-btn">Log in with Discord</button>`; return; }
   const initial = esc((AUTH.user.name || "?")[0].toUpperCase());
   const pic = AUTH.user.avatar ? `<img class="pfp" src="${esc(AUTH.user.avatar)}" alt="">` : `<span class="pfp">${initial}</span>`;
   const guildSel = AUTH.guilds.length
-    ? `<label class="f"><span>Server for classes and items</span><select id="guild-pick">${AUTH.guilds.map(g => opt(g.id, AUTH.guild, g.name)).join("")}</select></label>`
-    : `<p class="hint">You and the bot don't share a server yet.</p>`;
+    ? `<label class="f"><span>Library for classes and items</span><select id="guild-pick">${opt("account", AUTH.guild, "My account (private)")}${AUTH.guilds.map(g => opt(g.id, AUTH.guild, g.name)).join("")}</select></label>`
+    : `<label class="f"><span>Library for classes and items</span><select id="guild-pick"><option value="account">My account (private)</option></select></label>`;
   box.innerHTML = `<button type="button" class="acct-chip" id="acct-chip" aria-haspopup="true" aria-expanded="${MENU_OPEN}">${pic}<span class="who">${esc(AUTH.user.name)}</span><span class="caret" aria-hidden="true">▾</span></button>
     ${MENU_OPEN ? `<div class="acct-menu" role="menu">${guildSel}<button type="button" id="lib-open">Load from the bot</button><button type="button" class="ghost" id="logout-btn">Log out</button></div>` : ""}`;
   const img = box.querySelector("img.pfp");
@@ -2871,11 +2956,12 @@ async function initAuth() {
 async function saveToBot() {
   const kind = MODE;
   const data = JSON.parse(lastJson);
-  if (kind !== "action" && !AUTH.guild) { toast("Pick a server first (next to your name)."); return; }
+  if (kind !== "action" && !AUTH.guild) AUTH.guild="account";
+  if(kind!=="action"&&AUTH.guild!=="account"&&AUTH.guilds.find(g=>g.id===AUTH.guild)?.can_edit===false){toast("This server library is read-only. A server admin can enable editing in Settings.");return;}
   const btn = $("save-bot"); btn.disabled = true; const label = btn.textContent; btn.textContent = "Saving…";
   try {
     const character = kind === "action" && CHAR ? CHAR.id : undefined;
-    const res = await api("/api/save", {method: "POST", body: JSON.stringify({kind, guild: AUTH.guild, character, data})});
+    const res = await api("/api/save", {method: "POST", body: JSON.stringify({kind, scope:AUTH.guild==="account"?"account":"server", guild:AUTH.guild==="account"?undefined:AUTH.guild, character, data})});
     toast(res.message || "Saved.");
     if (character) { CHARS.detail = null; loadCharacters(); }
     if (kind !== "action") { delete EXIST.libs[AUTH.guild]; loadExistingLib(AUTH.guild); }
@@ -2886,9 +2972,9 @@ async function openLibrary() {
   $("lib-modal").hidden = false;
   $("lib-body").innerHTML = `<p class="hint">Loading…</p>`;
   try {
-    const lib = await api("/api/library" + (AUTH.guild ? "?guild=" + encodeURIComponent(AUTH.guild) : ""));
+    const lib = await api(AUTH.guild === "account" ? "/api/library?scope=account" : "/api/library" + (AUTH.guild ? "?guild=" + encodeURIComponent(AUTH.guild) : ""));
     window.__forgeLib = lib;
-    const gname = (AUTH.guilds.find(g => g.id === AUTH.guild) || {}).name || "this server";
+    const gname = AUTH.guild === "account" ? "your account (private)" : (AUTH.guilds.find(g => g.id === AUTH.guild) || {}).name || "this server";
     const group = (title, list, kind, empty) => `<div class="lib-group"><h3>${esc(title)}</h3>${list.length ? list.map((x, i) => `<div class="lib-item"><span>${esc(x.name)}${x.can_edit === false ? ` <em class="hint">(view only)</em>` : ""}</span><button type="button" class="tiny" data-lib-kind="${kind}" data-lib-i="${i}">Edit</button></div>`).join("") : `<p class="hint" style="margin:0">${esc(empty)}</p>`}</div>`;
     $("lib-body").innerHTML = group("Your actions (homebrew profile)", lib.actions, "actions", AUTH.homebrew && AUTH.homebrew.profile ? "No custom actions yet." : "No homebrew profile yet. In Discord: $mode homebrew, then $profile create.")
       + group(`Classes in ${gname}`, lib.classes, "classes", "No custom classes yet.") + group(`Items in ${gname}`, lib.items, "items", "No custom items yet.");
@@ -2913,7 +2999,7 @@ document.addEventListener("click", ev => {
   else if (b.id === "lib-close") $("lib-modal").hidden = true;
   else if (b.dataset.libKind) loadFromLibrary(b.dataset.libKind, Number(b.dataset.libI));
 });
-document.addEventListener("input", ev => { if (ev.target.id === "guild-pick") { AUTH.guild = ev.target.value; store("forge-guild", AUTH.guild); renderExisting(); } });
+document.addEventListener("input", ev => { if (ev.target.id === "guild-pick") { AUTH.guild = ev.target.value; store("forge-guild", AUTH.guild); renderExisting(); syncSaveLabel(); update(); } });
 
 function setupCollapsers() {
   let saved = {};
@@ -2946,7 +3032,7 @@ if (!CL) CL = entityFrom(CLASS_EXAMPLES[0].json);
 if (!IT) IT = entityFrom(ITEM_EXAMPLES[0].json);
 let startMode = "action";
 try { startMode = localStorage.getItem("forge-mode") || "action"; } catch (e) {}
-setMode(["action", "class", "item"].includes(startMode) ? startMode : "action");
+setMode(["action", "class", "item", "characters", "counters", "servers"].includes(startMode) ? startMode : "action");
 
 const AC = {el: null, items: [], from: 0, to: 0, sel: 0, q: ""};
 const acBox = document.createElement("div");
@@ -3155,4 +3241,4 @@ addEventListener("scroll", ev => {
 addEventListener("resize", acClose);
 initAuth();
 </script>
-<script src="forge-workspace.js?v=20261102-yaml"></script>
+<script src="forge-workspace.js?v=20261102-servers"></script>
