@@ -449,7 +449,7 @@ button:disabled { opacity: .38; }
           <span class="tag-ex" id="example-tag">Example</span>
         </div>
         <div class="row">
-          <label class="f" style="grid-column: span 2"><span>Name <em>max 50</em></span><input type="text" id="a-name" maxlength="50" autocomplete="off"></label>
+          <label class="f" style="grid-column: span 2"><span>Name <em>max 200</em></span><input type="text" id="a-name" maxlength="200" autocomplete="off"></label>
           <label class="f"><span>Targets</span>
             <select id="a-targets">
               <option value="auto">Automatic</option>
@@ -1085,9 +1085,9 @@ function renderAdders() {}
 
 function renderFields() {
   $("fields-wrap").hidden = isVar();
-  $("fields").innerHTML = S.fields.map((f, i) => `<div class="fieldrow">${bText(`fields.${i}.name`, "Field name", {root: "base", max: 100})}${bText(`fields.${i}.value`, "Field text", {root: "base", max: 300})}
+  $("fields").innerHTML = S.fields.map((f, i) => `<div class="fieldrow">${bText(`fields.${i}.name`, "Field name", {root: "base", max: 100})}${bText(`fields.${i}.value`, "Field text", {root: "base", max: 1024})}
     <button type="button" class="tiny ghost" data-fdel="${i}" style="margin-top:20px">Remove</button></div>`).join("");
-  $("add-field").disabled = S.fields.length >= 3;
+  $("add-field").disabled = S.fields.length >= 10;
 }
 function renderLooks() {
   const c = CUR();
@@ -1396,7 +1396,7 @@ function check(a) {
   if (a.sweep != null && (!Number.isInteger(a.sweep) || a.sweep < 0 || a.sweep > 20)) errs.push("Sweep must be a whole number from 0 to 20.");
   if (a.ricochet != null && (!Number.isInteger(a.ricochet) || a.ricochet < 0 || a.ricochet > 20)) errs.push("Ricochet must be a whole number from 0 to 20.");
   if (!a.name) errs.push("Give the action a name.");
-  else if (a.name.length > 50) errs.push("The name can be at most 50 characters.");
+  else if (a.name.length > 200) errs.push("The name can be at most 200 characters.");
   else if (RESERVED.includes(a.name.toLowerCase())) errs.push(`"${a.name}" is a word the bot uses for commands. Pick another name.`);
   if (!a.steps.length && !a.description && !a.title && !a.fields) errs.push("Add at least one step, a title or some effect text.");
   checkSteps(a.steps, "", errs, warns);
@@ -1412,7 +1412,7 @@ function check(a) {
     if (keys.has(key)) errs.push(`Two versions are called "${key}".`); keys.add(key);
     if (v.steps) checkSteps(v.steps, where, errs, warns);
     checkRules(v, where, errs);
-    if (v.name && v.name.length > 50) errs.push(`${where}the shown name can be at most 50 characters.`);
+    if (v.name && v.name.length > 200) errs.push(`${where}the shown name can be at most 200 characters.`);
   }
   if (a.auto_variant && Object.keys(a.auto_variant).length < 2) errs.push(`-var ${a.auto_variant.variant}: say when it switches by itself (a counter, or a status you have).`);
   for (const {where, field} of usedFiles()) {
@@ -1942,7 +1942,7 @@ document.addEventListener("click", ev => {
   if (b.dataset.addElse) { const at = locate(b.dataset.addElse); if (at) { const els = newStep("else"); at.list.splice(at.index + 1, 0, els); SEL = els.id; rerender(); } return; }
   if (b.dataset.outdent) { const at = locate(b.dataset.outdent); if (at && at.parent) { const p = locate(at.parent.id); moveNode(at.node.id, p.list, p.index + 1); rerender(); } return; }
   if (b.dataset.fdel != null) { S.fields.splice(+b.dataset.fdel, 1); rerender(); return; }
-  if (b.id === "add-field" && S.fields.length < 3) { S.fields.push({name: "", value: ""}); rerender(); return; }
+  if (b.id === "add-field" && S.fields.length < 10) { S.fields.push({name: "", value: ""}); rerender(); return; }
   if (b.id === "copy-cmd") { copy(lastCmd, lastCmd.length > 2000 ? "Copied, but it's over 2,000 characters. Use a .json file instead." : "Import command copied. Paste it in Discord."); return; }
   if (b.id === "copy-json") { copy(lastJson, "JSON copied."); return; }
   if (b.id === "btn-new" && MODE !== "action") { undoEntity = JSON.stringify({CL, IT}); if (MODE === "class") CL = BLANK_CLASS(); else IT = BLANK_ITEM(); $("ex").value = ""; $("ex-blurb").textContent = ""; renderEntity(); update(); fillExisting(); toast("Cleared.", true); return; }
@@ -2641,10 +2641,37 @@ function picturesHTML(d) {
     + slot("image", "Big image", "A large picture for the character.", d.image, CHARS.big[d.id], false)
     + `<p class="hint" style="margin:0">PNG, JPG, GIF or WEBP up to 8 MB, or an MP4 up to 25 MB (turned into a GIF).</p>`;
 }
+function describeNode(n) {
+  const cond = c => typeof c === "string" ? c : c && typeof c === "object" ? Object.entries(c).map(([k, v]) => `${k}: ${v}`).join(", ") : "";
+  switch (n.type) {
+    case "attack": return `Attack roll (${[n.ability || "STR", ...(n.extra_mods || [])].join(" + ")}${n.proficient === false ? "" : " + PROF"}${n.crit_range && n.crit_range < 20 ? `, crits on ${n.crit_range}+` : ""})`;
+    case "damage": return `Damage ${n.dice}${n.damage_type ? " " + n.damage_type : ""}`;
+    case "heal": return `Heal ${n.dice}`;
+    case "save": return `${n.ability} save${n.dc ? ` (DC ${n.dc})` : ""}`;
+    case "if": return `If ${cond(n.condition)}`;
+    case "counter": return `${n.op === "gain" ? "Gain" : "Spend"} ${n.amount ?? ""} ${n.counter}`.replace(/\s+/g, " ");
+    case "variable": return `Set ${n.name} = ${n.value}`;
+    case "roll": return `Roll ${n.dice} as ${n.name}`;
+    case "target": return `Target: ${n.select}`;
+    case "text": return `Text${n.title ? ` "${n.title}"` : ""}`;
+    case "effect": return `Effect ${n.effect && n.effect.name ? n.effect.name : ""}`.trim();
+    default: return String(n.type || "step");
+  }
+}
+function programOutline(rows, depth = 0, out = []) {
+  for (const n of rows || []) {
+    if (!n || typeof n !== "object") continue;
+    const pad = "  ".repeat(depth);
+    out.push(pad + describeNode(n));
+    if (Array.isArray(n.steps) && n.steps.length) programOutline(n.steps, depth + 1, out);
+    if (Array.isArray(n.else) && n.else.length) { out.push(pad + "Otherwise"); programOutline(n.else, depth + 1, out); }
+  }
+  return out;
+}
 function actionsHTML(d) {
   if (!d.actionList.length) return `<p class="hint" style="margin:0">No custom actions yet.</p>`;
   return d.actionList.map((a, i) => {
-    const j = a.json, steps = j ? (j.steps || []).length : 0;
+    const j = a.json, steps = j ? (Array.isArray(j.program) ? programOutline(j.program).length : (j.steps || []).length) : 0;
     const text = j ? String(j.description || j.title || "").replace(/\s+/g, " ").slice(0, 90) || `${steps} step${steps === 1 ? "" : "s"}` : "Can't be opened here";
     const sure = CHARS.confirmDel === i;
     return `<div class="lib-item"><span class="char-act"><span>${esc(a.name)}</span><em>${esc(text)}</em></span><span class="char-act-btns">${j ? `<button type="button" class="tiny" data-char-edit="${i}">Edit</button>` : ""}<button type="button" class="tiny danger" data-char-del="${i}">${sure ? "Sure?" : "Delete"}</button></span></div>`;
@@ -3057,7 +3084,8 @@ async function runAvrae() {
     const res = await api(`/api/characters/${encodeURIComponent(d.id)}/import-avrae`, {method: "POST", body: text, contentType: "text/plain; charset=utf-8"});
     CHARS.draft = null; applyDetail(res);
     const rows = (res.report || []).map(r => `<li>${esc(r.message)}</li>`).join("");
-    $("avrae-result").innerHTML = `<p><b>${esc(res.message)}</b> ${res.complete ? "Everything was translated." : "Some options couldn't be translated:"}</p>${rows ? `<ul class="hint" style="margin:4px 0 8px 18px">${rows}</ul>` : ""}<p class="hint">Check it in the action editor before relying on it.</p>`;
+    const outline = Array.isArray(res.program) ? programOutline(res.program) : [];
+    $("avrae-result").innerHTML = `<p><b>${esc(res.message)}</b> ${res.complete ? "Everything was translated." : "Some options couldn't be translated:"}</p>${rows ? `<ul class="hint" style="margin:4px 0 8px 18px">${rows}</ul>` : ""}${outline.length ? `<details open><summary>Steps (${outline.length})</summary><pre style="margin:6px 0;max-height:260px;overflow:auto;white-space:pre-wrap;font-size:12px">${esc(outline.join("\n"))}</pre></details>` : ""}<p class="hint">Check it in the action editor before relying on it.</p>`;
     $("avrae-foot").innerHTML = `<button type="button" class="ghost" id="avrae-more">Import another</button><button type="button" class="primary" id="avrae-cancel">Done</button>`;
   } catch (e) {
     $("avrae-result").innerHTML = `<p class="hint" style="color:var(--bad)">${esc(e.message)}</p>`;
@@ -3549,6 +3577,6 @@ initAuth();
 <script src="forge-workspace.js?v=20261102-definition-delete"></script>
 
 <script src="workshop.js?v=20261102-workshop"></script>
-<script src="scripts.js?v=20261103-vscode"></script>
+<script src="scripts.js?v=20261104-embed"></script>
 
 <script src="draconic-editor.js?v=20261103"></script>
