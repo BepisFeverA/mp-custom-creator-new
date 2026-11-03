@@ -1,3 +1,4 @@
+(() => {
   const selector='textarea[data-script-code],textarea[data-fw-field="code"],textarea[data-k="code"][data-s]';
   const editors=new Map();
   const escape=s=>s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
