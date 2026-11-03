@@ -1,0 +1,55 @@
+.vsc-editor:focus-within { border-color:#007acc; box-shadow:0 0 0 1px #007acc33; }
+.vsc-editor .vsc-tabs { display:flex; align-items:stretch; background:#181818; border-bottom:1px solid #2b2b2b; min-height:36px; }
+.vsc-editor .vsc-tab { display:flex; align-items:center; gap:9px; background:#1e1e1e; border-right:1px solid #2b2b2b; border-top:1px solid #007acc; padding:8px 14px; font-size:12px; color:#fff; min-width:0; }
+.vsc-editor .vsc-file { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.vsc-editor .vsc-python { color:#e8c365; font:700 11px Consolas,monospace; letter-spacing:-1px; }
+.vsc-editor .vsc-tools { display:flex; gap:2px; align-items:center; margin-left:auto; padding:0 6px; }
+.vsc-editor button.vsc-tool { min-width:28px; width:28px; height:26px; padding:4px; margin:0; border:0; border-radius:3px; background:transparent; color:#bfbfbf; display:grid; place-items:center; box-shadow:none; }
+.vsc-editor button.vsc-tool:hover { background:#ffffff15; color:white; }
+.vsc-editor button:focus-visible { outline:1px solid #75beff; outline-offset:-1px; }
+.vsc-editor .vsc-tool svg { width:15px; height:15px; fill:none; stroke:currentColor; stroke-width:1.3; }
+.vsc-editor .vsc-breadcrumb { display:flex; align-items:center; gap:8px; height:28px; padding:0 16px; font-size:11px; color:#969696; border-bottom:1px solid #ffffff04; overflow:hidden; white-space:nowrap; }
+.vsc-editor .vsc-breadcrumb i { color:#858585; font-style:normal; }
+.vsc-editor .vsc-breadcrumb strong { font-weight:400; color:#bdbdbd; overflow:hidden; text-overflow:ellipsis; }
+.vsc-editor .vsc-body { position:relative; overflow:hidden; isolation:isolate; }
+.vsc-editor textarea.vsc-input, .vsc-editor .vsc-code { font:400 var(--ed-font)/var(--ed-line) Consolas,"Cascadia Code","Courier New",monospace !important; letter-spacing:0 !important; tab-size:4 !important; text-align:left !important; white-space:pre !important; word-break:normal !important; overflow-wrap:normal !important; padding:12px 76px 12px 64px !important; margin:0 !important; border:0 !important; border-radius:0 !important; box-sizing:border-box !important; font-variant-ligatures:none; }
+.vsc-editor textarea.vsc-input { position:relative; display:block; z-index:3; width:100% !important; height:360px; min-height:220px; max-height:75vh; resize:vertical; background:transparent !important; color:transparent !important; -webkit-text-fill-color:transparent; caret-color:#fff; outline:none !important; box-shadow:none !important; overflow:auto !important; scrollbar-color:#424242 #1e1e1e; scrollbar-width:thin; }
+.vsc-editor textarea.vsc-input::selection { background:#264f78; -webkit-text-fill-color:transparent; }
+.vsc-editor .vsc-highlight { position:absolute; inset:0; z-index:1; overflow:hidden; pointer-events:none; }
+.vsc-editor .vsc-code { color:var(--ed-fg); background:transparent; width:max-content; min-width:100%; min-height:100%; }
+.vsc-editor .vsc-active { position:absolute; top:12px; left:52px; right:0; height:var(--ed-line); background:#ffffff04; border:1px solid #282828; pointer-events:none; z-index:0; }
+.vsc-editor .vsc-gutter { position:absolute; top:0; bottom:0; left:0; width:52px; z-index:4; overflow:hidden; background:#1e1e1e; pointer-events:none; }
+.vsc-editor .vsc-lines { padding:12px 0; font:400 var(--ed-font)/var(--ed-line) Consolas,"Cascadia Code",monospace; color:#858585; text-align:right; }
+.vsc-editor .vsc-lines span { display:block; height:var(--ed-line); padding-right:15px; }
+.vsc-editor .vsc-lines .current { color:#c6c6c6; }
+.vsc-editor .vsc-status { display:flex; align-items:center; gap:14px; padding:0 10px; min-height:23px; font-size:11px; line-height:23px; background:#007acc; color:#fff; user-select:none; white-space:nowrap; }
+.vsc-editor .vsc-position { margin-left:auto; }
+.vsc-editor .vsc-status .vsc-mode { font-size:12px; }
+.vsc-editor .vsc-keyword { color:#c586c0; }
+.vsc-editor .vsc-declaration, .vsc-editor .vsc-constant { color:#569cd6; }
+.vsc-editor .vsc-string { color:#ce9178; }
+.vsc-editor .vsc-number { color:#b5cea8; }
+.vsc-editor .vsc-comment { color:#6a9955; }
+.vsc-editor .vsc-function { color:#dcdcaa; }
+.vsc-editor .vsc-name, .vsc-editor .vsc-interpolation { color:#9cdcfe; }
+.vsc-editor .vsc-bracket { color:#ffd700; }
+.vsc-editor .vsc-type { color:#4ec9b0; }
+.vsc-editor .vsc-minimap { position:absolute; z-index:5; top:0; right:12px; bottom:12px; width:50px; overflow:hidden; background:#1e1e1e; cursor:pointer; opacity:.8; }
+.vsc-editor .vsc-mini-code { margin:0; padding:12px 2px; font:2px/4px Consolas,monospace; white-space:pre; pointer-events:none; overflow:hidden; color:#bdbdbd; }
+.vsc-editor .vsc-mini-window { position:absolute; inset:0 0 auto; min-height:8px; background:#ffffff0b; border:1px solid #ffffff08; pointer-events:none; }
+.vsc-editor.vsc-expanded { position:fixed; inset:24px; width:auto; margin:0; z-index:2100; box-shadow:0 0 0 30px #0009,0 16px 64px #0009; display:flex; flex-direction:column; }
+.vsc-editor.vsc-expanded .vsc-body { flex:1; min-height:0; }
+.vsc-editor.vsc-expanded textarea.vsc-input { height:100% !important; max-height:none; resize:none; }
+body:has(.vsc-input:focus) #ac { z-index:2200; background:#252526; color:#d4d4d4; border-color:#454545; border-radius:2px; font-family:Consolas,"Cascadia Code",monospace; }
+body:has(.vsc-input:focus) #ac .ac-row.on { background:#04395e; color:#fff; }
+body:has(.vsc-input:focus) #ac .ac-detail { color:#969696; }
+@container (max-width:420px) {
+  .vsc-editor .vsc-minimap { display:none; }
+  .vsc-editor textarea.vsc-input, .vsc-editor .vsc-code { padding-right:16px !important; }
+  .vsc-editor .vsc-status { gap:8px; }
+  .vsc-editor .vsc-encoding, .vsc-editor .vsc-ending { display:none; }
+}
+@media (forced-colors:active) {
+  .vsc-editor textarea.vsc-input { color:CanvasText !important; -webkit-text-fill-color:CanvasText; background:Canvas !important; caret-color:CanvasText; }
+  .vsc-editor .vsc-highlight { display:none; }
+}

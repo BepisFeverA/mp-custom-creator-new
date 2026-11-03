@@ -376,7 +376,14 @@ button:disabled { opacity: .38; }
 .pic-info { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; min-width: 0; }
 .pic-btns { display: flex; gap: 4px; margin-top: 4px; }
 .char-act em { font-style: normal; font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+#workshop-area { max-width:1280px; margin:0 auto; }
+#workshop-area input[type=search] { font:inherit; color:var(--fg); background:transparent; border:1px solid var(--field); border-radius:4px; padding:9px 12px; }
+#workshop-area input[type=search]:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); }
+#ws-modal-body > label.f { margin:14px 0; }
+#ws-modal-body .row { margin:12px 0; }
 </style>
+<link rel="stylesheet" href="draconic-editor.css?v=20261103">
 
 <nav class="topbar" aria-label="Account">
   <div class="topbar-in">
@@ -394,6 +401,8 @@ button:disabled { opacity: .38; }
         <button type="button" role="tab" data-mode="counters" aria-selected="false" id="tab-counters" hidden>Counters</button>
         <button type="button" role="tab" data-mode="characters" aria-selected="false" id="tab-chars" hidden>Characters</button>
         <button type="button" role="tab" data-mode="servers" aria-selected="false" id="tab-servers" hidden>Servers</button>
+        <button type="button" role="tab" data-mode="workshop" aria-selected="false" id="tab-workshop">Workshop</button>
+        <button type="button" role="tab" data-mode="scripts" aria-selected="false" id="tab-scripts">Scripts</button>
       </div>
       <div class="picker" style="margin-top:10px">
         <label for="ex" class="eyebrow">Start from an example</label>
@@ -597,6 +606,10 @@ button:disabled { opacity: .38; }
     <div class="head-tools"><button type="button" class="ghost" id="definition-delete-cancel">Cancel</button><button type="button" class="danger" id="definition-delete-confirm">Delete</button></div>
   </div>
 </div>
+<section id="scripts-area" hidden style="padding:0 32px 32px;max-width:1280px;margin:auto"></section>
+<section id="workshop-area" hidden style="padding:0 32px 32px"></section>
+<div class="modal-back" id="ws-modal" hidden><div class="modal" role="dialog" aria-modal="true" aria-labelledby="ws-modal-title" style="width:960px"><div class="chars-head"><h2 id="ws-modal-title">Workshop</h2><button type="button" class="ghost" id="ws-close">Close</button></div><div id="ws-modal-body"></div></div></div>
+<div class="modal-back" id="ws-new-modal" style="z-index:40" hidden><div class="modal" role="dialog" aria-modal="true" aria-labelledby="ws-new-title"><h2 id="ws-new-title">New collection</h2><label class="f"><span>Name</span><input type="text" id="ws-new-name" maxlength="80" placeholder="My collection"></label><p class="hint">New collections are private. Add content to the draft and release a version before subscribing.</p><div class="head-tools"><button type="button" class="ghost" id="ws-new-cancel">Cancel</button><button type="button" class="primary" data-w="new">Create collection</button></div><p class="hint" id="ws-new-error" role="alert"></p></div></div>
 <script>
 
 const FORGE_CONFIG = {apiBase: "https://dry-sphere-deplete.ngrok-free.dev", clientId: "1548238261175193610"};
@@ -667,6 +680,7 @@ function unknownTags(texts) { const out = []; for (const t of texts) for (const 
 
 const FIXED_VARIABLES = {"lastRoll": "Total of the last explicit roll: roll(), Roll, attack, save, check, damage or healing. Damage uses the rolled amount before damage modifiers.", "lastAttackDidHit": "Whether the last attack hit.", "lastAttackDidCrit": "Whether the last attack was a critical hit.", "lastAttackRollTotal": "Last attack total, including bonuses.", "lastAttackNaturalRoll": "Last attack's selected natural d20.", "lastAttackHadAdvantage": "Last attack: 0 normal, 1 advantage, -1 disadvantage, 2 elven accuracy.", "lastAttackAC": "Effective AC used for the last attack, after AC penetration; 0 if unknown.", "lastAttackMargin": "Last attack total minus its effective target AC; 0 if AC is unknown.", "lastSaveDidPass": "Whether the last saving throw passed.", "lastSaveDC": "Last saving throw's DC.", "lastSaveRollTotal": "Last saving throw total, including bonuses.", "lastSaveNaturalRoll": "Last save's selected natural d20.", "lastSaveAbility": "Last save ability, e.g. Dexterity. Text; usable in comparisons or output.", "lastSaveMargin": "Last save total minus its DC.", "lastCheckDidPass": "Whether the last program Check passed.", "lastCheckRollTotal": "Last program Check total.", "lastCheckNaturalRoll": "Last program Check's selected natural d20.", "lastCheckDC": "Last Check DC, or the opponent's total for a contest.", "lastCheckAbility": "Last Check ability code, e.g. WIS. Text.", "lastCheckMargin": "Last Check total minus its DC.", "lastDamage": "Damage from the last Damage or Burst step, after damage modifiers; can exceed HP lost.", "lastDamageRoll": "Last Damage step's rolled amount, before damage modifiers.", "lastDamageTaken": "HP plus temporary HP removed by the last Damage or Burst step.", "lastHPDamage": "Actual HP removed by the last Damage or Burst step; excludes temporary HP.", "lastDamageType": "Last Damage step's damage type. Text.", "lastTargetWasDefeated": "Whether the last Damage or Burst step reduced a living target to 0 HP.", "lastHealing": "Actual HP restored by the last Heal step, including self-healing.", "lastHealingRoll": "Last Heal step's base amount before healing bonuses.", "lastHealingRequested": "Last Heal step's boosted amount before the recipient's missing-HP cap.", "lastTempHp": "Temporary HP actually granted by the last Temp HP step or Heal step granting temp HP.", "lastCounterName": "Last counter used by an action cost or Counter step. Empty on failure. Text.", "lastCounterRemaining": "Remaining value of the last counter used; 0 on failure.", "lastCounterUsedAmount": "Actual charges spent; negative when charges were gained; 0 on failure.", "lastCounterRequestedAmount": "Requested charges spent, before caps; negative for gains. Set/reset use the requested reduction from the old value.", "lastCounterBefore": "Counter value before the last operation; 0 on failure.", "lastCounterDelta": "Actual counter change: positive for gains and negative for spending.", "lastCounterMin": "Minimum of the last successfully used counter.", "lastCounterMax": "Maximum of the last successfully used counter.", "lastCounterDidSucceed": "Whether the last counter operation succeeded.", "targetIndex": "Current target index, starting at 0.", "targetNumber": "Current target number, starting at 1.", "targetCount": "Number of selected targets in this action call.", "targetIteration": "Current program Repeat iteration, starting at 1; 1 outside Repeat.", "targetIterations": "Maximum iterations of the current Repeat; 1 outside Repeat.", "damage": "Total modified damage to the current target in this action.", "raw_damage": "Total damage to the current target before incoming damage modifiers.", "actual_damage": "Total actual HP removed from the current target by this action.", "healed": "Total HP restored to the current target by this action.", "hit": "Current attack branch hit state.", "crit": "Current attack branch critical-hit state.", "saved": "Current save branch success state.", "check_total": "Last program Check total.", "check_success": "Last program Check success.", "iteration": "Current Repeat iteration, starting at 1.", "LEVEL": "Caster level.", "spell_level": "Casting level supplied for this action; 0 if absent.", "round": "Current combat round; 0 outside combat.", "inCombat": "Whether combat is active.", "spell_attack_bonus": "Default spell attack bonus: CAST + PROF.", "spell_dc": "Default spell save DC: 8 + CAST + PROF.", "spell": "Casting ability modifier (same as CAST).", "STR": "Caster's STR ability modifier.", "DEX": "Caster's DEX ability modifier.", "CON": "Caster's CON ability modifier.", "INT": "Caster's INT ability modifier.", "WIS": "Caster's WIS ability modifier.", "CHA": "Caster's CHA ability modifier.", "PROF": "Caster's proficiency bonus.", "CAST": "Caster's casting ability modifier.", "self_hp": "Caster's current HP.", "self_max_hp": "Caster's maximum HP.", "self_missing_hp": "Caster's missing HP.", "self_hp_percent": "Caster's HP percentage (0–100, rounded down).", "self_temp_hp": "Caster's temporary HP.", "self_ac": "Caster's current AC (0 if unknown).", "self_speed": "Caster's current speed.", "self_level": "Caster's level.", "self_alive": "Caster's whether alive.", "self_name": "Caster's name (text).", "self_bleed_potency": "Caster's current Bleed potency.", "self_bleed_count": "Caster's current Bleed count.", "self_burn_potency": "Caster's current Burn potency.", "self_burn_count": "Caster's current Burn count.", "self_rupture_potency": "Caster's current Rupture potency.", "self_rupture_count": "Caster's current Rupture count.", "self_sinking_potency": "Caster's current Sinking potency.", "self_sinking_count": "Caster's current Sinking count.", "self_tremor_potency": "Caster's current Tremor potency.", "self_tremor_count": "Caster's current Tremor count.", "self_poise_potency": "Caster's current Poise potency.", "self_poise_count": "Caster's current Poise count.", "self_chill_potency": "Caster's current Chill potency.", "self_chill_count": "Caster's current Chill count.", "self_str": "Caster's STR ability modifier.", "self_dex": "Caster's DEX ability modifier.", "self_con": "Caster's CON ability modifier.", "self_int": "Caster's INT ability modifier.", "self_wis": "Caster's WIS ability modifier.", "self_cha": "Caster's CHA ability modifier.", "target_hp": "Current target's current HP.", "target_max_hp": "Current target's maximum HP.", "target_missing_hp": "Current target's missing HP.", "target_hp_percent": "Current target's HP percentage (0–100, rounded down).", "target_temp_hp": "Current target's temporary HP.", "target_ac": "Current target's current AC (0 if unknown).", "target_speed": "Current target's current speed.", "target_level": "Current target's level.", "target_alive": "Current target's whether alive.", "target_name": "Current target's name (text).", "target_bleed_potency": "Current target's current Bleed potency.", "target_bleed_count": "Current target's current Bleed count.", "target_burn_potency": "Current target's current Burn potency.", "target_burn_count": "Current target's current Burn count.", "target_rupture_potency": "Current target's current Rupture potency.", "target_rupture_count": "Current target's current Rupture count.", "target_sinking_potency": "Current target's current Sinking potency.", "target_sinking_count": "Current target's current Sinking count.", "target_tremor_potency": "Current target's current Tremor potency.", "target_tremor_count": "Current target's current Tremor count.", "target_poise_potency": "Current target's current Poise potency.", "target_poise_count": "Current target's current Poise count.", "target_chill_potency": "Current target's current Chill potency.", "target_chill_count": "Current target's current Chill count.", "target_str": "Current target's STR ability modifier.", "target_dex": "Current target's DEX ability modifier.", "target_con": "Current target's CON ability modifier.", "target_int": "Current target's INT ability modifier.", "target_wis": "Current target's WIS ability modifier.", "target_cha": "Current target's CHA ability modifier.", "previous_damage": "Value from a referenced program node: damage.", "previous_actual_damage": "Value from a referenced program node: actual_damage.", "previous_raw_damage": "Value from a referenced program node: raw_damage.", "previous_healed": "Value from a referenced program node: healed."};
 const STEP_TYPES = {
+  script: {label: "Script", blurb: "Runs bounded Draconic code", fields: [{k:"code",label:"Draconic script",type:"area",max:12000,def:'power = roll("1d6")\nemit(f"Power: {power}")',req:true,mono:true,hint:"Python-like code. Use roll(), damage(), heal(), effect(), get_var() and set_var(). Validate and simulate with the bot."}]},
   variable: {label: "Variable", blurb: "Saves a number or expression for later steps", fields: [
     {k: "name", label: "Variable name", type: "text", def: "power", req: true, hint: "use {power} in later dice or text"},
     {k: "value", label: "Value / expression", type: "area", def: 'roll("1d6")', req: true, mono: true,
@@ -722,7 +736,7 @@ const STEP_TYPES = {
   else: {label: "Otherwise", blurb: "Runs when the If above is false", fields: []},
 };
 const OMIT_DEFAULT = new Set(["bonus", "crit_range", "proficient", "always_hit", "always_crit", "dc", "damage_type", "alt_type", "save", "crit", "to", "from", "kind"]);
-const ADD_ORDER = ["attack", "save", "sweep", "ricochet", "variable", "if", "damage", "effect", "heal", "remove", "text", "look", "counter", "grant", "summon", "burst"];
+const ADD_ORDER = ["attack", "save", "sweep", "ricochet", "variable", "script", "if", "damage", "effect", "heal", "remove", "text", "look", "counter", "grant", "summon", "burst"];
 const LEAVES = ADD_ORDER.filter(t => !GROUPS.includes(t));
 const COND_KEYS = ["when", "chance", "per_round", "target_has", "target_missing", "self_has", "self_missing", "target_stacks", "target_stat", "consumed", "counter_is"];
 const EFFECT_FIELDS = ["name", "kind", "duration", "description", "ac", "speed", "attack", "damage", "save", "taken", "dealt", "tick", "potency", "count", "bleed_bonus_chance", "burn", "pierce", "crit_less", "hit_pct", "status", "taken_ranged", "regen", "attack_adv", "defense_adv", "skip_turn"];
@@ -789,7 +803,7 @@ function groupAncestor(F, i) {
   return -1;
 }
 function treeAuto(i) { const F = flat(), anc = F[i] ? groupAncestor(F, i) : -1; return anc >= 0 && F[anc].node.type === "attack" ? "hit" : "always"; }
-function botAuto(i) { const F = flat(), s = F[i].node, before = F.slice(0, i).map(x => x.node.type); return (!["attack", "save", "text", "variable"].includes(s.type) && before.includes("attack") && !before.includes("save")) ? "hit" : "always"; }
+function botAuto(i) { const F = flat(), s = F[i].node, before = F.slice(0, i).map(x => x.node.type); return (!["attack", "save", "text", "variable", "script"].includes(s.type) && before.includes("attack") && !before.includes("save")) ? "hit" : "always"; }
 
 function ofFor(i) {
   const F = flat(), f = F[i];
@@ -969,10 +983,11 @@ function condHTML(s, i) {
       <label class="f"><span>…this many stacks</span><input type="number" id="s${s.id}-w-stacks_min" data-s="${s.id}" data-w="stacks_min" min="1" max="99" value="${esc(c.stacks_min)}"></label>
       ${!isIf && (spent || c.consumed) ? `<label class="chk"><input type="checkbox" id="s${s.id}-w-consumed" data-s="${s.id}" data-w="consumed" ${c.consumed ? "checked" : ""}> Only if the status was spent for a crit</label>` : ""}</div></details>`;
 }
-const BADGE = {sweep: "SWP", ricochet: "RCH", variable: "VAR", if: "IF", else: "ELSE", attack: "ATK", save: "SAVE", damage: "DMG", heal: "HEAL", effect: "FX", remove: "DEL", text: "TXT", counter: "CTR", grant: "ACT", summon: "SUM", burst: "BST", look: "LOOK"};
+const BADGE = {script:"PY",sweep: "SWP", ricochet: "RCH", variable: "VAR", if: "IF", else: "ELSE", attack: "ATK", save: "SAVE", damage: "DMG", heal: "HEAL", effect: "FX", remove: "DEL", text: "TXT", counter: "CTR", grant: "ACT", summon: "SUM", burst: "BST", look: "LOOK"};
 const LONG = {
   sweep: "Put the attack, damage and effects this Sweep applies to inside this block. Adds random living enemies to the current targets, once per block. Amount accepts a number, variable or roll() expression (clamped to 0–20). Other steps keep their own targets.",
   ricochet: "Put the attack, damage and effects this Ricochet applies to inside this block. Adds random living enemies to the current targets, once per block. Amount accepts a number, variable or roll() expression (clamped to 0–20). Other steps keep their own targets.",
+  script: "Draconic code runs with limited functions. Combat changes use native steps. Values saved in locals are available to later steps; persistent variables use get_var/set_var. Scripts only run in homebrew.",
   variable: "Saves a numeric result for later steps in this action. Use {name} to reuse it; roll(\"1d6\") saves the total of a dice roll.",
   attack: "Rolls to hit. Steps inside it only happen on a hit.",
   save: "The target rolls a save. Steps inside it follow the result.",
@@ -1300,6 +1315,7 @@ function checkSteps(steps, where, errs, warns) {
   if (steps.length > MAX_STEPS) errs.push(`${where}at most ${MAX_STEPS} steps.`);
   steps.forEach((s, i) => {
     const n = `${where}Step ${i + 1}`;
+    if (s.type === "script" && (!s.code?.trim() || s.code.length > 12000)) errs.push(`${n}: enter a script of 1–12,000 characters.`);
     if (s.type === "variable") {
       if (!/^[A-Za-z_][A-Za-z0-9_]{0,39}$/.test(s.name || "")) errs.push(`${n}: a variable name needs 1–40 letters, numbers or underscores and cannot begin with a number.`);
       if (s.value == null || String(s.value).trim() === "" || String(s.value).length > 500) errs.push(`${n}: enter a number or expression of up to 500 characters.`);
@@ -1401,6 +1417,7 @@ const PRETTY = d => String(d || "").replace(/\+/g, " + ").replace(/-/g, " − ")
 function sayStep(s, who) {
   const on = (s.to || s.from) === "self" ? "you" : who;
   switch (s.type) {
+    case "script": return "runs a Draconic script (validate and simulate with the bot)";
     case "variable": return `saves ${s.value ?? "0"} as ${s.name || "a variable"}; reuse {${s.name || "name"}} later`;
     case "attack": return `makes a ${s.ability} attack roll` + (s.always_hit ? " that never misses" : "") + (s.crit_range && s.crit_range < 20 ? `, crits on ${s.crit_range}+` : "") + (s.ignore_flat ? `, ignores ${s.ignore_flat} AC` : "") + (s.crit_consume ? `; spends ${s.crit_consume.min}+ ${s.crit_consume.effect} for a crit` : "");
     case "save": return `${who} makes a ${s.ability === "BEST" ? "best-stat" : s.ability} save (DC ${s.dc ?? "auto"})`;
@@ -1431,7 +1448,7 @@ function whenText(s) {
   if (s.consumed) bits.push("if the status was spent");
   return bits.length ? ` (${bits.join(", ")})` : "";
 }
-function withAutoWhen(steps) { return steps.map((s, i) => { const before = steps.slice(0, i).map(x => x.type); return Object.assign({}, s, {when: s.when || ((!["attack", "save", "text", "variable"].includes(s.type) && before.includes("attack") && !before.includes("save")) ? "hit" : "always")}); }); }
+function withAutoWhen(steps) { return steps.map((s, i) => { const before = steps.slice(0, i).map(x => x.type); return Object.assign({}, s, {when: s.when || ((!["attack", "save", "text", "variable", "script"].includes(s.type) && before.includes("attack") && !before.includes("save")) ? "hit" : "always")}); }); }
 function previewIndex() {
   const val = $("pv-var").value;
   const idx = val === "" ? S.active : Number(val);
@@ -1504,7 +1521,7 @@ function renderPreview(full) {
 }
 
 let lastJson = "", lastCmd = "";
-function update() { if (["characters", "counters", "servers"].includes(MODE)) return; if (MODE !== "action") return updateEntity(); updateAction(); }
+function update() { if (["characters", "counters", "servers", "workshop", "scripts"].includes(MODE)) return; if (MODE !== "action") return updateEntity(); updateAction(); }
 function updateAction() {
   const a = buildAction();
   const {errs, warns} = check(a);
@@ -1537,7 +1554,7 @@ function updateAction() {
   renderPreview(a);
   try { localStorage.setItem("forge-draft-v4", JSON.stringify(S)); } catch (e) {}
 }
-function rerender() { if (["characters", "counters", "servers"].includes(MODE)) return; if (MODE !== "action") { renderEntity(); update(); return; } renderTabs(); renderRules(); renderSteps(); renderFields(); renderLooks(); renderTriggers(); fillBasics(); update(); }
+function rerender() { if (["characters", "counters", "servers", "workshop", "scripts"].includes(MODE)) return; if (MODE !== "action") { renderEntity(); update(); return; } renderTabs(); renderRules(); renderSteps(); renderFields(); renderLooks(); renderTriggers(); fillBasics(); update(); }
 
 function condFrom(raw, s) {
   if (raw.when) s.cond.when = raw.when;
@@ -2238,18 +2255,25 @@ function renderEntity() {
   if (MODE === "class") renderClassForm(); else if (MODE === "item") renderItemForm();
 }
 function setMode(m) {
+  if(m==="workshop"&&["action","class","item"].includes(MODE))window.Workshop?.capture(MODE,lastJson);
   if (["characters", "counters", "servers"].includes(m) && !AUTH.user) m = "action";
   MODE = m;
   document.querySelectorAll("[data-mode]").forEach(b => b.setAttribute("aria-selected", String(b.dataset.mode === m)));
   const gallery = m === "characters";
   const serverMode = m === "servers";
   const counterMode = m === "counters";
+  const scriptMode = m === "scripts";
+  $("scripts-area").hidden = !scriptMode;
+  const workshopMode = m === "workshop";
+  $("workshop-area").hidden = !workshopMode;
   $("chars").hidden = !gallery;
   $("servers").hidden = !serverMode;
   $("counter-area").hidden = !counterMode;
-  $("forge-grid").hidden = gallery || counterMode || serverMode;
-  document.querySelectorAll("header .picker, header .head-tools, #ex-blurb").forEach(e => e.classList.toggle("mode-off", gallery || counterMode || serverMode));
+  $("forge-grid").hidden = gallery || counterMode || serverMode || workshopMode || scriptMode;
+  document.querySelectorAll("header .picker, header .head-tools, #ex-blurb").forEach(e => e.classList.toggle("mode-off", gallery || counterMode || serverMode || workshopMode || scriptMode));
   renderCharBanner(); syncSaveLabel(); renderExisting();
+  if (scriptMode) { window.Scripts?.enter(); return; }
+  if (workshopMode) { window.Workshop?.enter(); return; }
   if (counterMode) { renderCounterArea(); if (!CHARS.list) loadCharacters(); return; }
   if (gallery) { renderCharacters(); loadCharacters(); return; }
   if (serverMode) { renderServers(); loadServers(); return; }
@@ -2320,7 +2344,7 @@ function logoutLocal() {
   $("definition-delete-modal").hidden = true; DEFINITION_DELETE.target=null; LIB_VIEW.request++;
   $("server-modal").hidden = true; SERVER.list=null;SERVER.detail=null;SERVER.request++;SERVER.loading=false;EXIST.libs={};
   COUNTER_EDITOR.request++; Object.assign(COUNTER_EDITOR, {pid:null, data:null, draft:null, key:null, preview:null, busy:false, confirm:false});
-  if (["characters", "counters", "servers"].includes(MODE)) setMode("action"); else renderCharBanner();
+  if (["characters", "counters", "servers", "workshop", "scripts"].includes(MODE)) setMode("action"); else renderCharBanner();
   renderAccount();
 }
 function applySession(data) {
@@ -2412,7 +2436,7 @@ function renderServerModal() {
   }
   const kind=SERVER.tab,list=d[kind]||[],word=kind==="classes"?"class":"item";
   const account=SERVER.account?.[kind]||[];
-  $("server-body").innerHTML=list.map((e,i)=>`<div class="lib-item"><span><b>${esc(e.name)}</b>${e.json.description?`<div class="hint">${esc(e.json.description)}</div>`:""}</span><span class="char-act-btns"><button type="button" data-server-edit="${i}" ${!d.can_edit||SERVER.busy?"disabled":""}>Edit</button>${d.can_edit?`<button type="button" class="danger" data-server-delete="${i}" ${SERVER.busy?"disabled":""}>Delete</button>`:""}</span></div>`).join("")+(list.length?"":`<p class="hint">No custom ${kind} in this server.</p>`)+`<div class="head-tools"><button type="button" class="primary" data-server-new="${word}" ${!d.can_edit?"disabled":""}>New ${word}</button></div>`+(d.can_edit?`<div class="row"><label class="f"><span>Add from my account</span><select id="server-publish-pick"><option value="">Choose ${word}…</option>${account.map(e=>`<option value="${esc(e.id)}">${esc(e.name)}</option>`).join("")}</select></label></div><button type="button" data-server-publish="${word}" ${!account.length||SERVER.busy?"disabled":""}>Add to server</button>${!account.length?'<p class="hint">Save a definition to My account (private) to add a copy here.</p>':""}`:'<p class="hint">A server admin can enable editing for everyone in Settings.</p>')+`<p class="hint" id="server-error" role="alert">${esc(SERVER.dialogError||"")}</p>`;
+  $("server-body").innerHTML=list.map((e,i)=>`<div class="lib-item"><span><b>${esc(e.name)}</b>${e.json.description?`<div class="hint">${esc(e.json.description)}</div>`:""}</span><span class="char-act-btns">${e.workshop?`<button type="button" data-w-open="${esc(e.workshop.collection)}">Workshop</button>`:`<button type="button" data-server-edit="${i}" ${!d.can_edit||SERVER.busy?"disabled":""}>Edit</button>${d.can_edit?`<button type="button" class="danger" data-server-delete="${i}" ${SERVER.busy?"disabled":""}>Delete</button>`:""}`}</span></div>`).join("")+(list.length?"":`<p class="hint">No custom ${kind} in this server.</p>`)+`<div class="head-tools"><button type="button" class="primary" data-server-new="${word}" ${!d.can_edit?"disabled":""}>New ${word}</button></div>`+(d.can_edit?`<div class="row"><label class="f"><span>Add from my account</span><select id="server-publish-pick"><option value="">Choose ${word}…</option>${account.map(e=>`<option value="${esc(e.id)}">${esc(e.name)}</option>`).join("")}</select></label></div><button type="button" data-server-publish="${word}" ${!account.length||SERVER.busy?"disabled":""}>Add to server</button>${!account.length?'<p class="hint">Save a definition to My account (private) to add a copy here.</p>':""}`:'<p class="hint">A server admin can enable editing for everyone in Settings.</p>')+`<p class="hint" id="server-error" role="alert">${esc(SERVER.dialogError||"")}</p>`;
 }
 function editServerDefinition(word, data=null) {
   const gid=SERVER.gid;if(!SERVER.detail?.can_edit)return;closeServer();AUTH.guild=gid;store("forge-guild",gid);
@@ -2958,6 +2982,8 @@ function startLogin() {
 }
 let MENU_OPEN = false;
 function renderAccount() {
+  window.Workshop?.auth();
+  window.Scripts?.auth();
   const box = $("account");
   $("save-bot").hidden = !(loginReady() && AUTH.user);
   $("tab-chars").hidden = !AUTH.user;
@@ -3156,7 +3182,7 @@ if (!CL) CL = entityFrom(CLASS_EXAMPLES[0].json);
 if (!IT) IT = entityFrom(ITEM_EXAMPLES[0].json);
 let startMode = "action";
 try { startMode = localStorage.getItem("forge-mode") || "action"; } catch (e) {}
-setMode(["action", "class", "item", "characters", "counters", "servers"].includes(startMode) ? startMode : "action");
+setMode(["action", "class", "item", "characters", "counters", "servers", "workshop", "scripts"].includes(startMode) ? startMode : "action");
 
 const AC = {el: null, items: [], from: 0, to: 0, sel: 0, q: ""};
 const acBox = document.createElement("div");
@@ -3184,6 +3210,7 @@ function acKind(el) {
   if (d.w === "target_stat" || (d.b || "").endsWith("target_stat")) return "stat";
   if (d.w === "counter_is" || (d.b || "").endsWith("counter_is")) return "counter";
   if (["min", "max", "reset_to"].includes(d.ctField)) return "formula";
+  if (d.scriptCode !== undefined || d.fwField === "code" || (d.s && d.k === "code")) return "script";
   if (d.s && d.k === "value" && locate(d.s)?.node.type === "variable") return "expression";
   if (["value", "onError", "dc"].includes(d.fwField)) return "expression";
   if (["dice", "amount"].includes(d.fwField)) return "dice";
@@ -3212,6 +3239,14 @@ function suggest(el, force) {
     const own = runtimeMatches([...TAG_ITEMS, ...wrappedVars()], "{" + inner);
     const tag = "{status:".startsWith("{" + inner.toLowerCase()) ? [{label: "{status:", insert: "{status:", detail: "a status with its icon", badge: "{}", mono: true, keep: true}] : [];
     return {items: [...own, ...tag], from: open, to, q: "{" + inner};
+  }
+  if (kind === "script") {
+    const word=/[A-Za-z_][A-Za-z0-9_]*$/.exec(before)?.[0]||"";
+    if(!word&&!force)return null;
+    const api=window.Scripts?.schema?.functions||{};
+    const fns=Object.entries(api).map(([name,detail])=>({label:name,insert:name+"(",detail,badge:"fn",mono:true}));
+    const items=runtimeMatches([...FIXED_VAR_ITEMS.filter(i=>!Object.hasOwn(api,i.label)),...EXPRESSION_FUNCTIONS.filter(i=>!Object.hasOwn(api,i.label)),...fns,...["self","target","args","roundNumber"].map(label=>({label,insert:label,detail:"Script context",badge:"var",mono:true}))],word).slice(0,40);
+    return {items,from:pos-word.length,to:pos+(/^[A-Za-z0-9_]*/.exec(v.slice(pos))[0].length),q:word};
   }
   if (kind === "expression") {
     // Quoted dice strings use the same {variable} syntax as later Dice fields.
@@ -3289,6 +3324,7 @@ function acRender() {
 }
 function acPlace() {
   const el = AC.el, r = el.getBoundingClientRect(), cs = getComputedStyle(el);
+  const codeCaret = window.DraconicEditor?.caret(el, AC.from);
   let x = r.left + 8;
   if (el.tagName === "INPUT") {
     acPlace.ctx = acPlace.ctx || document.createElement("canvas").getContext("2d");
@@ -3296,6 +3332,12 @@ function acPlace() {
     x = r.left + parseFloat(cs.paddingLeft) + parseFloat(cs.borderLeftWidth) + acPlace.ctx.measureText(el.value.slice(0, AC.from)).width - el.scrollLeft;
   }
   const w = acBox.offsetWidth, h = acBox.offsetHeight;
+  if (codeCaret) {
+    const below=codeCaret.bottom+2,above=codeCaret.top-h-2;
+    acBox.style.left=Math.max(8,Math.min(codeCaret.left,innerWidth-w-8))+"px";
+    acBox.style.top=Math.max(8,Math.min(below+h>innerHeight-8&&above>=8?above:below,innerHeight-h-8))+"px";
+    return;
+  }
   let y = r.bottom + 2;
   if (y + h > innerHeight - 8 && r.top - h - 2 > 8) y = r.top - h - 2;
   acBox.style.left = Math.max(8, Math.min(x, innerWidth - w - 8)) + "px";
@@ -3366,3 +3408,8 @@ addEventListener("resize", acClose);
 initAuth();
 </script>
 <script src="forge-workspace.js?v=20261102-definition-delete"></script>
+
+<script src="workshop.js?v=20261102-workshop"></script>
+<script src="scripts.js?v=20261103-vscode"></script>
+
+<script src="draconic-editor.js?v=20261103"></script>
