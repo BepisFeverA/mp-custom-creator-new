@@ -1438,6 +1438,7 @@ function sayStep(s, who) {
   switch (s.type) {
     case "script": return "runs a Draconic script (validate and simulate with the bot)";
     case "variable": return `saves ${s.value ?? "0"} as ${s.name || "a variable"}; reuse {${s.name || "name"}} later`;
+    case "roll": return `rolls ${PRETTY(s.dice)} as ${s.label || s.name || "a value"}`;
     case "attack": return `makes a ${s.ability} attack roll` + (s.always_hit ? " that never misses" : "") + (s.crit_range && s.crit_range < 20 ? `, crits on ${s.crit_range}+` : "") + (s.ignore_flat ? `, ignores ${s.ignore_flat} AC` : "") + (s.crit_consume ? `; spends ${s.crit_consume.min}+ ${s.crit_consume.effect} for a crit` : "");
     case "save": return `${who} makes a ${s.ability === "BEST" ? "best-stat" : s.ability} save (DC ${s.dc ?? "auto"})`;
     case "damage": return `${PRETTY(s.dice)}${s.damage_type ? " " + s.damage_type : ""}${s.alt_type ? "/" + s.alt_type : ""} damage` + ({half: ", half on a save", none: ", none on a save"}[s.save] || "")
@@ -3086,7 +3087,7 @@ async function runAvrae() {
     const rows = (res.report || []).map(r => `<li>${esc(r.message)}</li>`).join("");
     const outline = Array.isArray(res.program) ? programOutline(res.program) : [];
     $("avrae-result").innerHTML = `<p><b>${esc(res.message)}</b> ${res.complete ? "Everything was translated." : "Some options couldn't be translated:"}</p>${rows ? `<ul class="hint" style="margin:4px 0 8px 18px">${rows}</ul>` : ""}${outline.length ? `<details open><summary>Steps (${outline.length})</summary><pre style="margin:6px 0;max-height:260px;overflow:auto;white-space:pre-wrap;font-size:12px">${esc(outline.join("\n"))}</pre></details>` : ""}<p class="hint">Check it in the action editor before relying on it.</p>`;
-    $("avrae-foot").innerHTML = `<button type="button" class="ghost" id="avrae-more">Import another</button><button type="button" class="primary" id="avrae-cancel">Done</button>`;
+    $("avrae-foot").innerHTML = `<button type="button" class="ghost" id="avrae-more">Import another</button><button type="button" class="ghost" id="avrae-done">Done</button><button type="button" class="primary" id="avrae-edit" data-name="${esc(res.action_name || "")}">Edit steps now</button>`;
   } catch (e) {
     $("avrae-result").innerHTML = `<p class="hint" style="color:var(--bad)">${esc(e.message)}</p>`;
     $("avrae-text").disabled = false; $("avrae-go").disabled = false; $("avrae-go").textContent = "Import";
@@ -3127,6 +3128,8 @@ document.addEventListener("click", ev => {
   if (b.id === "char-avrae") openAvrae();
   else if (b.id === "avrae-cancel" && !AVR.busy) $("avrae-modal").hidden = true;
   else if (b.id === "avrae-go") runAvrae();
+  else if (b.id === "avrae-done") $("avrae-modal").hidden = true;
+  else if (b.id === "avrae-edit") { const a = (CHARS.detail?.actionList || []).find(x => x.name === b.dataset.name); $("avrae-modal").hidden = true; if (a && a.json) workOnCharacter(a); else toast("Open the action from the list to edit it."); }
   else if (b.id === "avrae-more") openAvrae();
   else if (b.id === "ddb-cancel") $("ddb-modal").hidden = true;
   else if (b.id === "ddb-go") runImport();
@@ -3574,7 +3577,7 @@ addEventListener("scroll", ev => {
 addEventListener("resize", acClose);
 initAuth();
 </script>
-<script src="forge-workspace.js?v=20261102-definition-delete"></script>
+<script src="forge-workspace.js?v=20261104-program-ui"></script>
 
 <script src="workshop.js?v=20261102-workshop"></script>
 <script src="scripts.js?v=20261104-embed"></script>
